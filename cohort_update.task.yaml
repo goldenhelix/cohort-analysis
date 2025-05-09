@@ -5,7 +5,7 @@ description: |-
   Updates a cohort variant frequencies track by adding new samples.
 
   ## Process Overview
-  This task merges variant data from new VCF files into an existing cohort variant 
+  This task merges variant data from new VCF files into an existing cohort variant
   frequencies track. It:
   1. Reads variants from the input VCF files
   2. Filters variants based on quality parameters (depth, quality score, alt reads)
@@ -17,7 +17,7 @@ description: |-
   1. Use the "Add Samples to Cohort Variant Frequencies" workflow
   2. Select your existing cohort parameter file
   3. Select the folder containing your new VCF files
-  
+
   The workflow will automatically run this task with the correct parameters.
 
 agent_requirements:
@@ -81,7 +81,7 @@ steps:
     args:
       - |-
         #!/usr/bin/env bash
-        set -ex
+        set -e
 
         #
         # Parameters for track being created
@@ -94,11 +94,15 @@ steps:
         # the sample name was already seen in the the existing counts file
         skipped_files_path="${out_file}_skipped_duplicates.txt"
 
-        if [ "${genome_assembly}" == "GRCh_37_g1k" ]; then
-          coordSysId="GRCh_37_g1k,Chromosome,Homo sapiens"
-        else
-          coordSysId="GRCh_38,Chromosome,Homo sapiens"
-        fi
+        case "${GH_WORKSPACE_ASSEMBLY}" in
+            GRCh_37*)
+                coordSysId="GRCh_37_g1k,Chromosome,Homo sapiens"
+                ;;
+            *)
+                coordSysId="GRCh_38,Chromosome,Homo sapiens"
+                ;;
+        esac
+        echo "Workspace Assembly: ${GH_WORKSPACE_ASSEMBLY} => ${coordSysId}"
 
         #
         # Annotation folder containing ReferenceSequenceV2-NCBI_GRCh_38_Homo_sapiens.tsf
