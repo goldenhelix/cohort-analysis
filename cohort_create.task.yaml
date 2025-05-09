@@ -1,0 +1,97 @@
+name: Create Cohort
+description: |-
+  # Create Initial Cohort Settings
+  
+  Creates initial settings for a new cohort variant frequencies track.
+
+  ## Overview
+  This is the first task that should be run when creating a new cohort. It creates 
+  the initial settings file in the user annotations folder that will be used each time
+  samples are added to the cohort.
+
+  ## Settings
+  The settings file contains parameters like:
+  - Minimum read depth
+  - Quality scores  
+  - Alternative read thresholds
+
+  These parameters control which variants are included in the cohort frequencies.
+
+  ## Usage
+  You can rerun this task to update the settings, or manually edit the parameter file
+  in the user annotations folder.
+
+
+agent_requirements:
+  cpu_cores: 0.1
+  memory_gb: 0.1 
+
+parameters:
+  - name: cohort_name
+    type: string
+    label: Cohort Name
+    help: The name of the cohort to create
+
+  - name: series_name
+    type: string
+    label: Series Name
+    help: The name of the series to create
+
+  - name: min_depth
+    type: integer
+    label: Minimum Read Depth
+    help: Minimum read depth required for variant calls
+    value: "10"
+
+  - name: min_quality
+    type: integer
+    label: Minimum Quality Score
+    help: Minimum quality score required for variant calls
+    value: "7"
+
+  - name: min_alt_reads
+    type: integer
+    label: Minimum Alternative Reads
+    help: Minimum number of alternative allele reads required
+    value: "2"
+
+
+steps:
+  - name: create_cohort
+    description: Create the initial cohort
+    type: cmd
+    command: bash
+    args:
+      - |-
+        #!/usr/bin/env bash
+        set -ex
+
+        cohorts_folder="AppData/Common Data/UserAnnotations/cohorts"
+
+        #
+        # Parameters for track being created
+        #
+        sourceName="${cohort_name} Variant Frequencies"
+        seriesName="${series_name}"
+        sourceVersion=$(date -u +"%Y-%m-%d")
+
+        #
+        # Choose an output file name and path, this can be a full absolute file path
+        #
+        # You only need the "_$(date +%s)" component if running multiple times per day
+        #
+        out_file="${seriesName}_${sourceVersion}.tsf"
+        out_file="${cohorts_folder}/${out_file}"
+
+        mkdir -p "${WORKSPACE_DIR}/${cohorts_folder}"
+        out_parameter_file="${WORKSPACE_DIR}/${cohorts_folder}/${seriesName}.params.txt"
+
+        echo "cohort_name=${cohort_name}" > "${out_parameter_file}"
+        echo "series_name=${series_name}" >> "${out_parameter_file}"
+        echo "out_file=${out_file}" >> "${out_parameter_file}"
+        #
+        # The new file will be the existing counts file for the next run
+        echo "existing_counts=${existing_counts}" >> "${out_parameter_file}"
+        echo "min_depth=${min_depth}" >> "${out_parameter_file}"
+        echo "min_quality=${min_quality}" >> "${out_parameter_file}"
+        echo "min_alt_reads=${min_alt_reads}" >> "${out_parameter_file}"

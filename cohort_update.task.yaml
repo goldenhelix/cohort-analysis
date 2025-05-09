@@ -1,0 +1,213 @@
+name: Add Samples to Cohort Variant Frequencies
+description: |-
+  # Update Cohort Variant Frequencies
+
+  Updates a cohort variant frequencies track by adding new samples.
+
+  ## Process Overview
+  This task merges variant data from new VCF files into an existing cohort variant 
+  frequencies track. It:
+  1. Reads variants from the input VCF files
+  2. Filters variants based on quality parameters (depth, quality score, alt reads)
+  3. Merges the filtered variants with any existing variant counts
+  4. Updates the cohort parameter file with the new settings
+
+  ## Important Note
+  This task should not be run directly. Instead:
+  1. Use the "Add Samples to Cohort Variant Frequencies" workflow
+  2. Select your existing cohort parameter file
+  3. Select the folder containing your new VCF files
+  
+  The workflow will automatically run this task with the correct parameters.
+
+agent_requirements:
+  cpu_cores: 8
+  memory_gb: 16
+
+parameters:
+  - name: cohort_name
+    type: string
+    label: Cohort Name
+    help: The name of the cohort to create
+
+  - name: series_name
+    type: string
+    label: Series Name
+    help: The name of the series to create
+
+  - name: manifest_file
+    type: file
+    label: Manifest File
+    help: Text file containing paths to VCF files to process
+    pattern_match: ["*.txt"]
+
+  - name: existing_counts
+    type: file
+    label: Existing Counts File
+    help: Optional TSF file containing existing variant counts to update
+    pattern_match: ["*.tsf"]
+    optional: true
+
+  - name: min_depth
+    type: integer
+    label: Minimum Read Depth
+    help: Minimum read depth required for variant calls
+    value: "10"
+
+  - name: min_quality
+    type: integer
+    label: Minimum Quality Score
+    help: Minimum quality score required for variant calls
+    value: "7"
+
+  - name: min_alt_reads
+    type: integer
+    label: Minimum Alternative Reads
+    help: Minimum number of alternative allele reads required
+    value: "2"
+
+  - name: out_file
+    type: file
+    label: Output File
+    help: The output file to create
+    pattern_match: ["*.tsf"]
+
+
+steps:
+  - name: create_cohort
+    description: Create the initial cohort
+    type: cmd
+    command: bash
+    args:
+      - |-
+        #!/usr/bin/env bash
+        set -ex
+
+        #
+        # Parameters for track being created
+        #
+        sourceName="${cohort_name} Variant Frequencies"
+        seriesName="${series_name}"
+        sourceVersion=$(date -u +"%Y-%m-%d")
+
+        # This output file reports any samples and VCF inputs that were skipped because
+        # the sample name was already seen in the the existing counts file
+        skipped_files_path="${out_file}_skipped_duplicates.txt"
+
+        if [ "${genome_assembly}" == "GRCh_37_g1k" ]; then
+          coordSysId="GRCh_37_g1k,Chromosome,Homo sapiens"
+        else
+          coordSysId="GRCh_38,Chromosome,Homo sapiens"
+        fi
+
+        #
+        # Annotation folder containing ReferenceSequenceV2-NCBI_GRCh_38_Homo_sapiens.tsf
+        # or other appropriate reference sequence source
+        annotations_folder="${WORKSPACE_DIR}/AppData/Common Data/Annotations"
+
+
+
+        # Find the most recent output file that matches the out_file pattern
+
+        # remove the .tsf from the out_file
+        out_file="${out_file%.tsf}"
+        existing_counts=$(ls -t "${out_file}"_*.tsf | head -n 1)
+
+        out_file="${out_file}_$(date +%s).tsf"
+
+        existingCounts=""
+        existingCountsSamples=""
+        filterExisting=""
+
+        if [ "${existing_counts##*.}" == "tsf" ]; then
+
+          existingCounts="$existing_counts"
+          existingCountsSamples="${existing_counts}:2"
+          echo "Using existing counts: ${existingCounts}"
+
+          filterExisting=$(cat << EOF
+        - FilterFilesWithSamplesTask:
+            samplesFilePath: "${existingCountsSamples}"
+            logFile: "${skipped_files_path}"
+        EOF
+        )
+        fi
+
+        #
+        # Run merge and count
+        #
+        gautil_path="/opt/apiserver/gautil"
+
+        ls -la ../.
+        ls -la .
+        cat << EOF > gautil_batch_file.txt
+        ${filterExisting}
+        - forEach:
+            inputCount: 1
+            taskList:
+              - alleleicPrimitives
+              - filterByExpr:
+                  expr: MQ > ${min_quality}
+                  sampleExpr: DP >= ${min_depth} && GQ >= ${min_quality} && AD[1] > ${min_alt_reads}
+              - keepFields:
+                  keepSymbols:
+                    - RefAlt
+                    - REF
+                    - ALT
+                    - GT
+                    - END
+                    - Samples
+              - fullyFlattenedMultiAllelicSplit
+              - leftAlign
+              - trimCommonBases
+              - variantCollapsing
+
+        - mergeVariantsTransform:
+            onlyMergeMatchingRefAlts: true
+            mergeDifferentRecordTypes: false
+            readerWorkerThreads: 5
+            readersPerFlattener: 10
+
+        - additiveCountAlleles:
+            existingCountsSource: "${existingCounts}"
+            existingCountsSampleSource: "${existingCountsSamples}"
+            countNoCalls: true
+            sourceNamePrefix: "${sourceName}"
+            outputSampleNamesThreshold: 20
+
+        - filterByExpr:
+            # Only keep variants where frequency > 0
+            expr: any(AlleleCounts >= 0)
+
+        - runTaskLists:
+            taskLists:
+              - SourceTaskListTask:
+                  taskList:
+                    - createAnnotation
+                    - TsfWriterTask:
+                        filePath: "${out_file}"
+                        sourceMeta:
+                          coordSysId: "${coordSysId}"
+                          seriesName: "${seriesName}"
+                          sourceVersion: "${sourceVersion}"
+
+              - SourceTaskListTask:
+                  taskList:
+                    - keepFields:
+                        keepSymbols:
+                          - Samples
+                    - TsfWriterTask:
+                        filePath: "${out_file}"
+                        newFile: false
+                        sourceMeta:
+                          coordSysId: "${coordSysId}"
+                          sourceVersion: "${sourceVersion}"
+        EOF
+
+        "${gautil_path}" run  \
+                --annotationFolder="${annotations_folder}" \
+                --manifest "${manifest_file}" \
+                -c gautil_batch_file.txt
+
+        "${gautil_path}" precompute "${out_file}"
+

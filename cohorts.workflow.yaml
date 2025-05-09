@@ -1,0 +1,52 @@
+name: Add Samples to Cohort Variant Frequencies
+description: |-
+  # Add Samples to Cohort Variant Frequencies
+
+  This workflow will add samples to a cohort variant frequencies track by merging
+  the new VCF files with the existing counts file.
+
+  ## Process Overview
+  This workflow:
+  1. Generates a manifest file listing all VCF files in the input directory
+  2. Reads variants from the input VCF files
+  3. Filters variants based on quality parameters:
+     - Minimum read depth
+     - Minimum quality score 
+     - Minimum alternative allele reads
+  4. Merges the filtered variants with any existing variant counts
+  5. Updates the cohort parameter file with the new settings
+
+  ## Important Note
+  Before running this workflow:
+  1. Select your existing cohort parameter file
+  2. Select the folder containing your new VCF files
+  
+  The workflow will automatically process the files with the correct parameters.
+stages:
+  - name: generate_manifest
+    description: Generate manifest file from VCF directory
+    task_path: cohort_manifest.task.yaml
+    depends_on: []
+    task_parameters:
+      - name: input_directory
+        label: VCF Input Directory
+        type: directory
+
+  - name: process_cohort
+    description: Process VCF files and generate variant frequencies
+    task_path: cohort_update.task.yaml
+    depends_on: ["generate_manifest"]
+    parameter_file:
+      path: 
+        base_path: 
+          type: directory
+          value: "AppData/Common Data/UserAnnotations/cohorts"
+        file: ""
+
+    task_parameters:
+      - name: manifest_file
+        label: Manifest File
+        type: stage
+        stage: generate_manifest
+        stage_parameter_expression: ${manifest_file}
+
