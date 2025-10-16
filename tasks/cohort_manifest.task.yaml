@@ -23,6 +23,7 @@ parameters:
     type: directory
     label: Input Directory
     help: Directory containing VCF.gz files to process
+    supports_location_mode: 'read_only'
 
 steps:
   - name: create_manifest
