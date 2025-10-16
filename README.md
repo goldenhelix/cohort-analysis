@@ -1,85 +1,34 @@
-# Cohort Analysis Workflow
+# Build Cohort Annotation Track
 
-This repository contains Golden Helix server tasks for analyzing variant frequencies across multiple samples using VCF files.
-
-## Prerequisites
-
-- VCF files must be compressed (.vcf.gz)
-- VCF files must contain standard fields (DP, GQ, AD)
-- Appropriate read/write permissions
-
-## Tasks
-
-The repository contains the following tasks:
-
-### Create Cohort (`cohort_create.task.yaml`)
-
-Creates initial settings for a new cohort variant frequencies track.
-
-Parameters:
-- `cohort_name`: The name of the cohort to create
-- `series_name`: The name of the series to create
-- `min_depth`: Minimum read depth required for variant calls (default: 10)
-- `min_quality`: Minimum quality score required for variant calls (default: 7)
-- `min_alt_reads`: Minimum number of alternative allele reads required (default: 2)
-
-### Add Samples to Cohort (`cohort_update.task.yaml`)
-
-Updates a cohort variant frequencies track by adding new samples.
-
-Parameters:
-- `cohort_name`: The name of the cohort to update
-- `series_name`: The name of the series
-- `manifest_file`: Text file containing paths to VCF files to process
-- `existing_counts`: Optional TSF file containing existing variant counts to update
-- `min_depth`: Minimum read depth required for variant calls (default: 10)
-- `min_quality`: Minimum quality score required for variant calls (default: 7)
-- `min_alt_reads`: Minimum number of alternative allele reads required (default: 2)
-- `out_file`: The output TSF file to create
-
-### VCF Manifest Generator (`cohort_manifest.task.yaml`)
-
-Creates a manifest file listing all VCF.gz files from an input directory.
-
-Parameters:
-- `input_directory`: Directory containing VCF.gz files to process
-
-## Workflows
-
-### Add Samples to Cohort Variant Frequencies (`cohorts.workflow.yaml`)
-
-This workflow combines the above tasks to add samples to a cohort variant frequencies track.
-
-Process Overview:
-1. Generates a manifest file listing all VCF files in the input directory
-2. Reads variants from the input VCF files
-3. Filters variants based on quality parameters:
-   - Minimum read depth
-   - Minimum quality score
-   - Minimum alternative allele reads
-4. Merges the filtered variants with any existing variant counts
-5. Updates the cohort parameter file with the new settings
+Generate or update a cohort allele frequency annotation track from VCF files using the specified cohort definition. If the cohort already exists, a new version is created with merged variant frequencies.
 
 ## Usage
 
-1. Create a new cohort:
-   - Run the Create Cohort task to set up initial parameters
-   - Specify cohort name, series name, and quality thresholds
+### Step 1: Define Cohort (First Time Only)
 
-2. Add samples to an existing cohort:
-   - Use the "Add Samples to Cohort Variant Frequencies" workflow
-   - Select your existing cohort parameter file
-   - Select the folder containing your new VCF files
+If you haven't created a cohort yet, first run the **Define Cohort** task to create a cohort parameter file:
+
+- **Cohort Name**: Name for your cohort
+- **Series Name**: Name for the series
+- **Sample Name Threshold**: Maximum number of sample names to list for rare variants (default: 20)
+- **INFO Filter**: Filter expression for INFO fields (default: `all( FILTER == "MLrejected" )`)
+- **FORMAT Filter**: Filter expression for FORMAT fields (default: `AF > 0.03`)
+
+### Step 2: Build Cohort Annotation Track
+
+Run the **Build Cohort Annotation Track** workflow with these parameters:
+
+1. **VCF Input Directory**: Directory containing `*.vcf.gz` files to process
+2. **Cohort Parameter File**: Select the cohort parameter file created in Step 1
+
+## Process
+
+1. Reads variants from the input VCF files
+2. Applies INFO and FORMAT field filters
+3. Merges filtered variants with existing variant counts
+4. Creates or updates the cohort annotation track
 
 ## Output
 
-- A manifest file listing all processed VCF files
-- A TSF file containing variant frequencies
-- Updated cohort parameter file with new settings
-
-## Notes
-
-- The workflow requires significant resources (8 CPU cores, 16GB memory)
-- VCF files must be properly formatted and compressed
-- The workflow automatically handles duplicate samples
-- Results are stored in the user annotations folder
+- Updated cohort annotation track with merged variant frequencies
+- Results stored in the user annotations folder

@@ -1,41 +1,21 @@
-name: Add Samples to Cohort Variant Frequencies
-description: |-
-  # Add Samples to Cohort Variant Frequencies
+name: Build Cohort Annotation Track
+description: Generate or update a cohort allele frequency annotation track from VCF files using the specified cohort definition. If the cohort already exists, a new version is created with merged variant frequencies.
 
-  This workflow will add samples to a cohort variant frequencies track by merging
-  the new VCF files with the existing counts file.
-
-  ## Process Overview
-  This workflow:
-  1. Generates a manifest file listing all VCF files in the input directory
-  2. Reads variants from the input VCF files
-  3. Filters variants based on quality parameters:
-     - Minimum read depth
-     - Minimum quality score 
-     - Minimum alternative allele reads
-  4. Merges the filtered variants with any existing variant counts
-  5. Updates the cohort parameter file with the new settings
-
-  ## Important Note
-  Before running this workflow:
-  1. Select your existing cohort parameter file
-  2. Select the folder containing your new VCF files
-  
-  The workflow will automatically process the files with the correct parameters.
 stages:
-  - name: generate_manifest
+  - name: VCF Input
     description: Generate manifest file from VCF directory
-    task_path: cohort_manifest.task.yaml
+    task_path: tasks/cohort_manifest.task.yaml
     depends_on: []
     task_parameters:
       - name: input_directory
         label: VCF Input Directory
+        help: Directory containing *.vcf.gz files to process
         type: directory
 
-  - name: process_cohort
+  - name: Process Cohort Annotation Track
     description: Process VCF files and generate variant frequencies
-    task_path: cohort_update.task.yaml
-    depends_on: ["generate_manifest"]
+    task_path: tasks/cohort_update.task.yaml
+    depends_on: ["VCF Input"]
     parameter_file:
       path: 
         base_path: 
@@ -47,6 +27,6 @@ stages:
       - name: manifest_file
         label: Manifest File
         type: stage
-        stage: generate_manifest
+        stage: VCF Input
         stage_parameter_expression: ${manifest_file}
 

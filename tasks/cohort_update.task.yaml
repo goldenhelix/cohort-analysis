@@ -1,4 +1,4 @@
-name: Add Samples to Cohort Variant Frequencies
+name: Cohort Annotation Track Updater
 description: |-
   # Update Cohort Variant Frequencies
 
@@ -8,13 +8,13 @@ description: |-
   This task merges variant data from new VCF files into an existing cohort variant
   frequencies track. It:
   1. Reads variants from the input VCF files
-  2. Filters variants based on quality parameters (depth, quality score, alt reads)
+  2. Filters variants based on INFO and FORMAT fields filters
   3. Merges the filtered variants with any existing variant counts
   4. Updates the cohort parameter file with the new settings
 
   ## Important Note
   This task should not be run directly. Instead:
-  1. Use the "Add Samples to Cohort Variant Frequencies" workflow
+  1. Use the "Build Cohort Annotation Track" workflow
   2. Select your existing cohort parameter file
   3. Select the folder containing your new VCF files
 
@@ -25,22 +25,12 @@ agent_requirements:
   memory_gb: 16
 
 parameters:
-  - name: cohort_name
-    type: string
-    label: Cohort Name
-    help: The name of the cohort to create
-
-  - name: series_name
-    type: string
-    label: Series Name
-    help: The name of the series to create
-
   - name: manifest_file
     type: file
     label: Manifest File
     help: Text file containing paths to VCF files to process
     pattern_match: ["*.txt"]
-
+  
   - name: existing_counts
     type: file
     label: Existing Counts File
@@ -48,30 +38,45 @@ parameters:
     pattern_match: ["*.tsf"]
     optional: true
 
-  - name: min_depth
-    type: integer
-    label: Minimum Read Depth
-    help: Minimum read depth required for variant calls
-    value: "10"
-
-  - name: min_quality
-    type: integer
-    label: Minimum Quality Score
-    help: Minimum quality score required for variant calls
-    value: "7"
-
-  - name: min_alt_reads
-    type: integer
-    label: Minimum Alternative Reads
-    help: Minimum number of alternative allele reads required
-    value: "2"
-
   - name: out_file
     type: file
-    label: Output File
+    label: Output File Base Name
     help: The output file to create
-    pattern_match: ["*.tsf"]
+    group: "Advanced Options"
 
+  - name: cohort_name
+    type: string
+    label: Cohort Name
+    help: The name of the cohort to create
+    group: "Advanced Options"
+
+  - name: series_name
+    type: string
+    label: Series Name
+    help: The name of the series to create
+    group: "Advanced Options"
+
+  - name: sample_name_threshold
+    type: integer
+    label: Sample Name Threshold
+    help: The maximum number of sample names to list for rare variants
+    value: 20
+    group: "Advanced Options"
+
+  - name: info_filter
+    type: string
+    label: Filter Expression (INFO fields)
+    help: INFO field symbol names, comparisons (>, <, >=, <=, ==, !=), (and, or), operators (/ , +, - , * , ~) and values
+    value: "all( FILTER == \"MLrejected\" )"
+    group: "Advanced Options"
+
+  - name: format_filter
+    type: string
+    label: Filter Expression (FORMAT fields)
+    help: FORMAT field symbol names, comparisons (>, <, >=, <=, ==, !=), (and, or), operators (/ , +, - , * , ~) and values
+    value: "AF > 0.03"
+    group: "Advanced Options"
+  
 
 steps:
   - name: create_cohort
@@ -109,13 +114,13 @@ steps:
         # or other appropriate reference sequence source
         annotations_folder="${WORKSPACE_DIR}/AppData/Common Data/Annotations"
 
-
-
         # Find the most recent output file that matches the out_file pattern
 
-        # remove the .tsf from the out_file
+        # Only set existing_counts to the most recent file if it was not provided by the user
         out_file="${out_file%.tsf}"
-        existing_counts=$(ls -t "${out_file}"_*.tsf | head -n 1)
+        if [ -z "${existing_counts}" ]; then
+          existing_counts=$(ls -t "${out_file}"_*.tsf 2>/dev/null | head -n 1)
+        fi
 
         out_file="${out_file}_$(date +%s).tsf"
 
@@ -142,8 +147,11 @@ steps:
         #
         gautil_path="/opt/apiserver/gautil"
 
-        ls -la ../.
-        ls -la .
+        export GOLDENHELIX_USERDATA=${WORKSPACE_DIR}/AppData
+        if [ -d "$WORKSPACE_DIR/AppData/VarSeq/User Data" ]; then
+          export GH_CRASH_DUMP_DIR="$WORKSPACE_DIR/AppData/VarSeq/User Data"
+        fi
+
         cat << EOF > gautil_batch_file.txt
         ${filterExisting}
         - forEach:
@@ -151,8 +159,8 @@ steps:
             taskList:
               - alleleicPrimitives
               - filterByExpr:
-                  expr: MQ > ${min_quality}
-                  sampleExpr: DP >= ${min_depth} && GQ >= ${min_quality} && AD[1] > ${min_alt_reads}
+                  expr: ${info_filter}
+                  sampleExpr: ${format_filter}
               - keepFields:
                   keepSymbols:
                     - RefAlt
@@ -177,7 +185,7 @@ steps:
             existingCountsSampleSource: "${existingCountsSamples}"
             countNoCalls: true
             sourceNamePrefix: "${sourceName}"
-            outputSampleNamesThreshold: 20
+            outputSampleNamesThreshold: ${sample_name_threshold}
 
         - filterByExpr:
             # Only keep variants where frequency > 0
@@ -214,4 +222,9 @@ steps:
                 -c gautil_batch_file.txt
 
         "${gautil_path}" precompute "${out_file}"
+
+        # If ${skipped_files_path} is an empty file, delete it
+        if [ ! -s "${skipped_files_path}" ]; then
+          rm -f "${skipped_files_path}"
+        fi
 

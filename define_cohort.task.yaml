@@ -1,0 +1,72 @@
+name: Define Cohort
+description: Create or update a cohort definition file specifying the name, series, included samples, filtering rules, and annotation track parameters.
+
+agent_requirements:
+  cpu_cores: 0
+  memory_gb: 0
+
+parameters:
+  - name: cohort_name
+    type: string
+    label: Cohort Name
+    help: The name of the cohort to create
+
+  - name: series_name
+    type: string
+    label: Series Name
+    help: The name of the series to create
+
+  - name: sample_name_threshold
+    type: integer
+    label: Sample Name Threshold
+    help: The maximum number of sample names to list for rare variants
+    value: 20
+
+  - name: info_filter
+    type: string
+    label: Filter Expression (INFO fields)
+    help: INFO field symbol names, comparisons (>, <, >=, <=, ==, !=), (and, or), operators (/ , +, - , * , ~) and values
+    value: "true" # "all( FILTER == \"MLrejected\" )"
+
+  - name: format_filter
+    type: string
+    label: Filter Expression (FORMAT fields)
+    help: FORMAT field symbol names, comparisons (>, <, >=, <=, ==, !=), (and, or), operators (/ , +, - , * , ~) and values
+    value: "true" # "AF > 0.03"
+
+steps:
+  - name: create_cohort
+    description: Create the initial cohort
+    type: cmd
+    command: bash
+    args:
+      - |-
+        #!/usr/bin/env bash
+        set -ex
+
+        cohorts_folder="AppData/Common Data/UserAnnotations/cohorts"
+
+        #
+        # Parameters for track being created
+        #
+        sourceName="${cohort_name} Variant Frequencies"
+        seriesName="${series_name}"
+        sourceVersion=$(date -u +"%Y-%m-%d")
+
+        #
+        # Choose an output file name and path, this can be a full absolute file path
+        #
+        # You only need the "_$(date +%s)" component if running multiple times per day
+        #
+        out_file="${seriesName}_${sourceVersion}.tsf"
+        out_file="${cohorts_folder}/${out_file}"
+
+        mkdir -p "${WORKSPACE_DIR}/${cohorts_folder}"
+        out_parameter_file="${WORKSPACE_DIR}/${cohorts_folder}/${seriesName}.params.txt"
+
+        echo "cohort_name=${cohort_name}" > "${out_parameter_file}"
+        echo "series_name=${series_name}" >> "${out_parameter_file}"
+        echo "out_file=${out_file}" >> "${out_parameter_file}"
+        echo "sample_name_threshold=${sample_name_threshold}" >> "${out_parameter_file}"
+        echo "info_filter=${info_filter}" >> "${out_parameter_file}"
+        echo "format_filter=${format_filter}" >> "${out_parameter_file}"

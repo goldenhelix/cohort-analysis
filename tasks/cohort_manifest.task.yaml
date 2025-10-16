@@ -1,4 +1,4 @@
-name: VCF Manifest Generator
+name: Cohort Manifest Generator
 description: |-
   Creates a manifest file listing all VCF.gz files from an input directory.
 
@@ -6,17 +6,17 @@ description: |-
   directory. The manifest file is used to specify the input files for downstream
   tasks that require a list of VCF files.
 
-  NOTE: This task should not be run directly. Instead:
-  1. Use the "Add Samples to Cohort Variant Frequencies" workflow
+  ## Important Note
+  This task should not be run directly. Instead:
+  1. Use the "Build Cohort Annotation Track" workflow
   2. Select your existing cohort parameter file
   3. Select the folder containing your new VCF files
   
   The workflow will automatically run this task as part of the cohort workflow.
 
-
 agent_requirements:
-  cpu_cores: 1
-  memory_gb: 1
+  cpu_cores: 0
+  memory_gb: 0
 
 parameters:
   - name: input_directory
@@ -56,7 +56,7 @@ steps:
 
         manifest_file="${output_directory}/manifest.txt"
         manifest_file="$(readlink -f "${manifest_file}")"
-        manifest_file="${manifest_file#${WORKSPACE_DIR}}"
+        manifest_file="${manifest_file#${WORKSPACE_DIR}/}"
 
         touch result.env
         echo "manifest_file=${manifest_file}" 
