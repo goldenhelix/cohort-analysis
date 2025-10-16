@@ -11,8 +11,8 @@ If you haven't created a cohort yet, first run the **Define Cohort** task to cre
 - **Cohort Name**: Name for your cohort
 - **Series Name**: Name for the series
 - **Sample Name Threshold**: Maximum number of sample names to list for rare variants (default: 20)
-- **INFO Filter**: Filter expression for INFO fields (default: `all( FILTER == "MLrejected" )`)
-- **FORMAT Filter**: Filter expression for FORMAT fields (default: `AF > 0.03`)
+- **INFO Filter**: Filter expression for INFO fields (default: `QUAL > 10"`)
+- **FORMAT Filter**: Filter expression for FORMAT fields (default: `DP > 2`)
 
 ### Step 2: Build Cohort Annotation Track
 

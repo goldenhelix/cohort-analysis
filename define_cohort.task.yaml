@@ -26,13 +26,13 @@ parameters:
     type: string
     label: Filter Expression (INFO fields)
     help: INFO field symbol names, comparisons (>, <, >=, <=, ==, !=), (and, or), operators (/ , +, - , * , ~) and values
-    value: "true" # "all( FILTER == \"MLrejected\" )"
+    value: "QUAL > 10" # "all( FILTER == \"MLrejected\" )"
 
   - name: format_filter
     type: string
     label: Filter Expression (FORMAT fields)
     help: FORMAT field symbol names, comparisons (>, <, >=, <=, ==, !=), (and, or), operators (/ , +, - , * , ~) and values
-    value: "true" # "AF > 0.03"
+    value: "DP > 2"
 
 steps:
   - name: create_cohort
