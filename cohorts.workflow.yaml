@@ -12,6 +12,7 @@ stages:
         help: Directory containing *.vcf.gz files to process
         type: directory
         supports_location_mode: 'read_only'
+        persist_key: 'cohorts.input_directory'
 
   - name: Process Cohort Annotation Track
     description: Process VCF files and generate variant frequencies

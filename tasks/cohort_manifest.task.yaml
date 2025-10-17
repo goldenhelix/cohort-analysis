@@ -33,13 +33,10 @@ steps:
     args:
       - |-
         #!/usr/bin/env bash
-        set -ex
+        set -e
 
         # Ensure output directory exists
         output_directory="$(pwd)"
-
-        ls -la ../.
-        ls -la .
 
         mkdir -p "${output_directory}"
         manifest_file="${output_directory}/manifest.txt"

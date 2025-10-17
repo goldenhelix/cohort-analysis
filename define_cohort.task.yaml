@@ -10,11 +10,13 @@ parameters:
     type: string
     label: Cohort Name
     help: The name of the cohort to create
+    value: "Cohort"
 
   - name: series_name
     type: string
     label: Series Name
     help: The name of the series to create
+    value: "cohort"
 
   - name: sample_name_threshold
     type: integer
@@ -26,13 +28,15 @@ parameters:
     type: string
     label: Filter Expression (INFO fields)
     help: INFO field symbol names, comparisons (>, <, >=, <=, ==, !=), (and, or), operators (/ , +, - , * , ~) and values
-    value: "QUAL > 10" # "all( FILTER == \"MLrejected\" )"
+    value: all( FILTER == "MLrejected" )
+    optional: true
 
   - name: format_filter
     type: string
     label: Filter Expression (FORMAT fields)
     help: FORMAT field symbol names, comparisons (>, <, >=, <=, ==, !=), (and, or), operators (/ , +, - , * , ~) and values
     value: "DP > 2"
+    optional: true
 
 steps:
   - name: create_cohort
@@ -42,7 +46,7 @@ steps:
     args:
       - |-
         #!/usr/bin/env bash
-        set -ex
+        set -e
 
         cohorts_folder="AppData/Common Data/UserAnnotations/cohorts"
 
