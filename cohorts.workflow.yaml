@@ -1,6 +1,18 @@
 name: Build Cohort Annotation Track
 description: Generate or update a cohort allele frequency annotation track from VCF files using the specified cohort definition. If the cohort already exists, a new version is created with merged variant frequencies.
 
+selected_requirements_configuration: Panels
+requirements_configurations:
+  - name: Panels
+    description: Small VCF inputs for gene panels
+  - name: Exomes
+    description: Medium VCF inputs for exomes, shallow genomes or large panels
+  - name: Genomes
+    description: Large VCF inputs for high coverage whole genomes
+  - name: Many Genomes
+    description: Very large VCF inputs for genomes
+    
+
 stages:
   - name: VCF Input
     description: Generate manifest file from VCF directory
