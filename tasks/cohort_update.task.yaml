@@ -229,11 +229,16 @@ steps:
           fi
         fi
 
-        cat << EOF > gautil_batch_file.txt
+        cat << EOF > gautil_batch_file.yaml
         ${filterExisting}
         - forEach:
             inputCount: 1
             taskList:
+              - stableSourcePropTransform:
+                  sourceProps:
+                    - StringProp:
+                        name: CombineGVCFSpanRecord 
+                        value: true
               - alleleicPrimitives
         ${filterByExprSection}
               - keepFields:
@@ -252,8 +257,8 @@ steps:
         - mergeVariantsTransform:
             onlyMergeMatchingRefAlts: true
             mergeDifferentRecordTypes: false
-            readerWorkerThreads: 5
-            readersPerFlattener: 10
+            readerWorkerThreads: 8
+            readersPerFlattener: 2
 
         - additiveCountAlleles:
             existingCountsSource: "${existingCounts}"
@@ -261,10 +266,6 @@ steps:
             countNoCalls: true
             sourceNamePrefix: "${sourceName}"
             outputSampleNamesThreshold: ${sample_name_threshold}
-
-        - filterByExpr:
-            # Only keep variants where frequency > 0
-            expr: any(AlleleCounts >= 0)
 
         - runTaskLists:
             taskLists:
@@ -294,7 +295,7 @@ steps:
         "${gautil_path}" run  \
                 --annotationFolder="${annotations_folder}" \
                 --manifest "${manifest_file}" \
-                -c gautil_batch_file.txt
+                -c gautil_batch_file.yaml
 
         "${gautil_path}" precompute "${out_file}"
 
