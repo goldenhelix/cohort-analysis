@@ -31,7 +31,7 @@ steps:
     type: cmd
     command: bash
     args:
-      - |-
+      - |- # shell
         #!/usr/bin/env bash
         set -e
 

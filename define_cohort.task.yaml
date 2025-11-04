@@ -44,7 +44,7 @@ steps:
     type: cmd
     command: bash
     args:
-      - |-
+      - |- # shell
         #!/usr/bin/env bash
         set -e
 
@@ -55,14 +55,11 @@ steps:
         #
         sourceName="${cohort_name} Variant Frequencies"
         seriesName="${series_name}"
-        sourceVersion=$(date -u +"%Y-%m-%d")
 
         #
-        # Choose an output file name and path, this can be a full absolute file path
+        # Choose an output file base name and path. The base name will be extended with the current date and time.
         #
-        # You only need the "_$(date +%s)" component if running multiple times per day
-        #
-        out_file="${seriesName}_${sourceVersion}.tsf"
+        out_file="${seriesName}.tsf"
         out_file="${cohorts_folder}/${out_file}"
 
         mkdir -p "${WORKSPACE_DIR}/${cohorts_folder}"

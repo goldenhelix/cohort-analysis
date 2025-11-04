@@ -25,22 +25,26 @@ agent_requirements:
   memory_gb: 16
 
 alternative_agent_requirements:
-  Panels:
+  Small (256):
     cpu_cores: 8
     memory_gb: 16
-    description: Medium number of VCFs for gene panels
-  Exomes:
+    description: Up to ~256 samples (benchmarked at 8GB for 256 samples)
+  Medium (512):
     cpu_cores: 16
     memory_gb: 32
-    description: Large number of VCFs for exomes, shallow genomes or large panels
-  Genomes:
+    description: Up to ~512 samples (benchmarked at 16GB for 512 samples)
+  Large (1024):
     cpu_cores: 32
     memory_gb: 64
-    description: Large number of VCFs for genomes
-  Many Genomes:
+    description: Up to ~1024 samples (benchmarked at 40GB for 1024 samples)
+  XLarge (2048):
     cpu_cores: 64
-    memory_gb: 128
-    description: Very large number of VCFs for genomes
+    memory_gb: 96
+    description: Up to ~2048 samples (benchmarked at 70GB for 2048 samples)
+  XXLarge (4096):
+    cpu_cores: 64
+    memory_gb: 192
+    description: Up to ~4096 samples (benchmarked at 140GB for 4096 samples)
 
 parameters:
   - name: manifest_file
@@ -105,9 +109,9 @@ steps:
     type: cmd
     command: bash
     args:
-      - |-
+      - |- # shell
         #!/usr/bin/env bash
-        set -e
+        set -ex
 
         #
         # Parameters for track being created
@@ -143,7 +147,7 @@ steps:
           existing_counts=$(ls -t "${out_file}"_*.tsf 2>/dev/null | head -n 1)
         fi
 
-        out_file="${out_file}_$(date +%s).tsf"
+        out_file="${out_file}_${sourceVersion}_$(date +%s).tsf"
 
         existingCounts=""
         existingCountsSamples=""
@@ -257,8 +261,8 @@ steps:
         - mergeVariantsTransform:
             onlyMergeMatchingRefAlts: true
             mergeDifferentRecordTypes: false
-            readerWorkerThreads: 8
-            readersPerFlattener: 2
+            readerWorkerThreads: 2
+            readersPerFlattener: 40
 
         - additiveCountAlleles:
             existingCountsSource: "${existingCounts}"
@@ -295,7 +299,7 @@ steps:
         "${gautil_path}" run  \
                 --annotationFolder="${annotations_folder}" \
                 --manifest "${manifest_file}" \
-                -c gautil_batch_file.yaml
+                -c gautil_batch_file.yaml 2> >(grep --line-buffered -v "GAFeatureReader loop level greater than 1" >&2)
 
         "${gautil_path}" precompute "${out_file}"
 
