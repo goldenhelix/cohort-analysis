@@ -39,11 +39,11 @@ alternative_agent_requirements:
     description: Up to ~1024 samples (benchmarked at 40GB for 1024 samples)
   XLarge (2048):
     cpu_cores: 64
-    memory_gb: 96
+    memory_gb: 128
     description: Up to ~2048 samples (benchmarked at 70GB for 2048 samples)
   XXLarge (4096):
     cpu_cores: 64
-    memory_gb: 192
+    memory_gb: 256
     description: Up to ~4096 samples (benchmarked at 140GB for 4096 samples)
 
 parameters:
