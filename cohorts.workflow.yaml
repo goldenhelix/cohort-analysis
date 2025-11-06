@@ -46,3 +46,12 @@ stages:
         stage: VCF Input
         stage_parameter_expression: ${manifest_file}
 
+      - name: skip_existing_counts
+        type: boolean
+        label: Skip Existing Count
+        value: false
+        group: "Advanced Options"
+        optional: true
+    
+
+

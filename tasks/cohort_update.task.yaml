@@ -101,8 +101,14 @@ parameters:
     value: "DP > 2"
     group: "Advanced Options"
     optional: true
-  
 
+  - name: skip_existing_counts
+    type: boolean
+    label: Skip Existing Count
+    value: false
+    group: "Advanced Options"
+    optional: true
+  
 steps:
   - name: create_cohort
     description: Create the initial cohort
@@ -111,7 +117,7 @@ steps:
     args:
       - |- # shell
         #!/usr/bin/env bash
-        set -ex
+        set -e
 
         #
         # Parameters for track being created
@@ -153,7 +159,7 @@ steps:
         existingCountsSamples=""
         filterExisting=""
 
-        if [ "${existing_counts##*.}" == "tsf" ]; then
+        if [ "${existing_counts##*.}" == "tsf" ] && [ "$skip_existing_counts" != "true" ]; then
 
           existingCounts="$existing_counts"
           existingCountsSamples="${existing_counts}:2"
@@ -233,6 +239,12 @@ steps:
           fi
         fi
 
+        file_count=$(cat "$manifest_file" | wc -l )
+
+        python3 "${TASK_DIR}/threadCount.py" --cpu-count $AGENT_CPU_CORES $file_count
+        readerThreads=$(python3 "${TASK_DIR}/threadCount.py" --reader-threads --cpu-count $AGENT_CPU_CORES $file_count)
+        readersPerFlattener=$(python3 "${TASK_DIR}/threadCount.py" --readers-per-flattener --cpu-count $AGENT_CPU_CORES $file_count)
+
         cat << EOF > gautil_batch_file.yaml
         ${filterExisting}
         - forEach:
@@ -261,8 +273,9 @@ steps:
         - mergeVariantsTransform:
             onlyMergeMatchingRefAlts: true
             mergeDifferentRecordTypes: false
-            readerWorkerThreads: 2
-            readersPerFlattener: 40
+            inputBufferSize: 2000
+            readerWorkerThreads: ${readerThreads} 
+            readersPerFlattener: ${readersPerFlattener} 
 
         - additiveCountAlleles:
             existingCountsSource: "${existingCounts}"
@@ -288,6 +301,9 @@ steps:
                     - keepFields:
                         keepSymbols:
                           - Samples
+                    - subsetUsageSpace:
+                        usageSpace: "[]"
+ 
                     - TsfWriterTask:
                         filePath: "${out_file}"
                         newFile: false
