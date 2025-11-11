@@ -52,7 +52,7 @@ parameters:
     label: Manifest File
     help: Text file containing paths to VCF files to process
     pattern_match: ["*.txt"]
-  
+
   - name: existing_counts
     type: file
     label: Existing Counts File
@@ -108,7 +108,7 @@ parameters:
     value: false
     group: "Advanced Options"
     optional: true
-  
+
 steps:
   - name: create_cohort
     description: Create the initial cohort
@@ -167,7 +167,8 @@ steps:
           existingCountsSamples="${existing_counts}:2"
           echo "Using existing counts: ${existingCounts}"
 
-          "${gautil_path}" schema "$existing_counts" > existing_schema.json
+          "${gautil_path}" schema "$existingCounts" > existing_schema.json
+          "${gautil_path}" schema "$existingCountsSamples" > existing_schema_samples.json
 
           filterExisting=$(cat << EOF
         - FilterFilesWithSamplesTask:
@@ -187,7 +188,7 @@ steps:
           if [ -z "$vcf_file" ]; then
             continue
           fi
-          
+
           # Check if the file ends with .vcf.gz
           if [[ "$vcf_file" == *.vcf.gz ]]; then
             tbi_file="${vcf_file}.tbi"
@@ -196,7 +197,7 @@ steps:
             fi
           fi
         done < "${manifest_file}"
-        
+
         # Report missing TBI files and exit if any are found
         if [ ${#missing_tbi_files[@]} -gt 0 ]; then
           echo "Error: The following TBI index files are missing:" >&2
@@ -228,7 +229,7 @@ steps:
               echo "\"$value\""
             fi
           }
-          
+
           filterByExprSection="      - filterByExpr:"
           if [ -n "${info_filter}" ]; then
             quoted_info_filter=$(quote_if_needed "${info_filter}")
@@ -256,7 +257,7 @@ steps:
               - stableSourcePropTransform:
                   sourceProps:
                     - StringProp:
-                        name: CombineGVCFSpanRecord 
+                        name: CombineGVCFSpanRecord
                         value: true
               - alleleicPrimitives
         ${filterByExprSection}
@@ -277,8 +278,8 @@ steps:
             onlyMergeMatchingRefAlts: true
             mergeDifferentRecordTypes: false
             inputBufferSize: 2000
-            readerWorkerThreads: ${readerThreads} 
-            readersPerFlattener: ${readersPerFlattener} 
+            readerWorkerThreads: ${readerThreads}
+            readersPerFlattener: ${readersPerFlattener}
 
         - additiveCountAlleles:
             existingCountsSource: "${existingCounts}"
@@ -306,7 +307,7 @@ steps:
                           - Samples
                     - subsetUsageSpace:
                         usageSpace: "[]"
- 
+
                     - TsfWriterTask:
                         filePath: "${out_file}"
                         newFile: false
