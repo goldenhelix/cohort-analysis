@@ -119,6 +119,8 @@ steps:
         #!/usr/bin/env bash
         set -e
 
+        gautil_path="/opt/apiserver/gautil"
+
         #
         # Parameters for track being created
         #
@@ -165,6 +167,8 @@ steps:
           existingCountsSamples="${existing_counts}:2"
           echo "Using existing counts: ${existingCounts}"
 
+          "${gautil_path}" schema "$existing_counts" > existing_schema.json
+
           filterExisting=$(cat << EOF
         - FilterFilesWithSamplesTask:
             samplesFilePath: "${existingCountsSamples}"
@@ -206,7 +210,6 @@ steps:
         #
         # Run merge and count
         #
-        gautil_path="/opt/apiserver/gautil"
 
         export GOLDENHELIX_USERDATA=${WORKSPACE_DIR}/AppData
         if [ -d "$WORKSPACE_DIR/AppData/VarSeq/User Data" ]; then
