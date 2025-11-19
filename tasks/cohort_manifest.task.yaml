@@ -1,3 +1,5 @@
+# We could point this to our public schema?
+# yaml-language-server: $schema=https://www.schemastore.org/any.json
 name: Cohort Manifest Generator
 description: |-
   Creates a manifest file listing all VCF.gz files from an input directory.
@@ -25,6 +27,18 @@ parameters:
     help: Directory containing VCF.gz files to process
     supports_location_mode: 'read_only'
 
+  - name: parameter_file
+    type: file
+    label: Parameter File
+    help: The cohort parameter file for the cohort being updated
+
+  - name: existing_counts
+    type: file
+    label: Existing Counts File
+    help: Optional TSF file containing existing variant counts to update
+    pattern_match: ["*.tsf"]
+    optional: true
+
 steps:
   - name: create_manifest
     description: Create manifest file listing all VCF.gz files
@@ -35,27 +49,62 @@ steps:
         #!/usr/bin/env bash
         set -e
 
+        gautil_path="/opt/apiserver/gautil"
+
         # Ensure output directory exists
         output_directory="$(pwd)"
-
         mkdir -p "${output_directory}"
-        manifest_file="${output_directory}/manifest.txt"
 
-        # Create manifest file with absolute paths
-        find "${input_directory}" -type f -name "*.vcf.gz" | sort > "${manifest_file}"
+        if [ -z "${existing_counts}" ]; then
+          out_file=$(grep "out_file=" "${parameter_file}" | cut -d '=' -f 2)
+          out_file="${WORKSPACE_DIR}/${out_file}"
+          out_file="${out_file%.tsf}"
+          existing_counts=$(ls -t "${out_file}"_*.tsf 2>/dev/null | head -n 1)
+        fi
 
-        echo "Created manifest file at ${manifest_file}"
-        echo "Found $(wc -l < "${manifest_file}") VCF files" 
+        existing_sample_names="samples.txt"
+        if [ ! -z "${existing_counts}" ]; then
+          echo "Using existing counts file: ${existing_counts}"
+
+          cat <<EOF > sample_names.txsource
+          {
+            "inputs": [
+              "${existing_counts}:2"
+            ],
+            "name": "entitiesAsFeatures",
+            "options": {
+              "className": "EntitiesAsFeaturesTransformOptions"
+            }
+          }
+
+        EOF
+          "${gautil_path}" read sample_names.txsource | cut -f 5 > "${existing_sample_names}"
+          echo "Extracted $(wc -l < existing_sample_names) sample names from existing counts file."
+        else
+          echo "No existing counts file provided or found."
+          touch "${existing_sample_names}"
+        fi
+
+        python3 "${TASK_DIR}/../scripts/create_manifest_files.py" -n 256 "${existing_sample_names}" "${input_directory}" 
 
         # Seem to need this to prevent I/O errors on windows ???, otherwise we
         # can't write the result.env file
         echo "Working directory: $(pwd)/.., contains $(ls -la ../.)"
 
 
-        manifest_file="${output_directory}/manifest.txt"
-        manifest_file="$(readlink -f "${manifest_file}")"
-        manifest_file="${manifest_file#${WORKSPACE_DIR}/}"
+        parameter_file="${output_directory}/parameter_file.csv"
+        parameter_file="$(readlink -f "${parameter_file}")"
+        parameter_file="${parameter_file#${WORKSPACE_DIR}/}"
+
+        output_directory="$(pwd)"
+        output_directory="${output_directory#${WORKSPACE_DIR}/}"
+
+        output_manifest_list="$(pwd)/manifest_list.csv"
+        output_manifest_list="${output_manifest_list#${WORKSPACE_DIR}/}"
 
         touch result.env
-        echo "manifest_file=${manifest_file}" 
-        echo "manifest_file=${manifest_file}" > result.env
+        echo "output_manifest_list=${output_manifest_list}" > result.env
+        echo "output_directory=${output_directory}" >> result.env
+        echo "Output Parameters:"
+        cat result.env
+

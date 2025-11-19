@@ -1,0 +1,52 @@
+# We could point this to our public schema?
+# yaml-language-server: $schema=https://www.schemastore.org/any.json
+name: Cohort Annotation Track Updater
+description: |-
+  # Update Cohort Variant Frequencies
+
+  Updates a cohort variant frequencies track by adding new samples.
+
+  ## Process Overview
+  This task merges variant data from new VCF files into an existing cohort variant
+  frequencies track. It:
+  1. Reads variants from the input VCF files
+  2. Filters variants based on INFO and FORMAT fields filters
+  3. Merges the filtered variants with any existing variant counts
+  4. Updates the cohort parameter file with the new settings
+
+  ## Important Note
+  This task should not be run directly. Instead:
+  1. Use the "Build Cohort Annotation Track" workflow
+  2. Select your existing cohort parameter file
+  3. Select the folder containing your new VCF files
+
+  The workflow will automatically run this task with the correct parameters.
+
+agent_requirements:
+  cpu_cores: 16 
+  memory_gb: 32 
+
+parameters:
+  - name: manifest_file
+    type: file
+    label: Manifest File
+    help: Text file containing paths to VCF files to process
+    pattern_match: ["*.txt"]
+
+  - name: parameter_file
+    type: file
+    label: Parameter File
+    help: The cohort parameter file for the cohort being updated
+
+steps:
+  - name: create_cohort
+    description: Create the initial cohort
+    type: cmd
+    command: bash
+    args:
+      - |- # shell
+        #!/usr/bin/env bash
+        set -ex
+        python3 "${TASK_DIR}/../scripts/vcf_merge.py" \
+          --config "${parameter_file}" \
+          --manifest-file "${manifest_file}" 

@@ -1,20 +1,6 @@
 name: Build Cohort Annotation Track
 description: Generate or update a cohort allele frequency annotation track from VCF files using the specified cohort definition. If the cohort already exists, a new version is created with merged variant frequencies.
 
-selected_requirements_configuration: Small (256)
-requirements_configurations:
-  - name: Small (256)
-    description: Up to ~256 samples (benchmarked at 8GB for 256 samples)
-  - name: Medium (512)
-    description: Up to ~512 samples (benchmarked at 16GB for 512 samples)
-  - name: Large (1024)
-    description: Up to ~1024 samples (benchmarked at 40GB for 1024 samples)
-  - name: XLarge (2048)
-    description: Up to ~2048 samples (benchmarked at 70GB for 2048 samples)
-  - name: XXLarge (4096)
-    description: Up to ~4096 samples (benchmarked at 140GB for 4096 samples)
-    
-
 stages:
   - name: VCF Input
     description: Generate manifest file from VCF directory
@@ -28,30 +14,52 @@ stages:
         supports_location_mode: 'read_only'
         persist_key: 'cohorts.input_directory'
 
-  - name: Process Cohort Annotation Track
-    description: Process VCF files and generate variant frequencies
-    task_path: tasks/cohort_update.task.yaml
-    depends_on: ["VCF Input"]
-    parameter_file:
-      path: 
-        base_path: 
-          type: directory
-          value: "AppData/Common Data/UserAnnotations/cohorts"
-        file: ""
+      - name: parameter_file
+        label: Parameter File
+        help: Parameter file for the cohort
+        type: file
+        persist_key: 'cohorts.parameter_file'
+
+  - name: Process VCF Manifests
+    description: Generate manifest file from VCF directory
+    task_path: tasks/vcf_import.task.yaml
+    depends_on: ['VCF Input']
+
+    glob_parameter:
+      path:
+        type: 'stage'
+        stage: VCF Input
+        parameter_expression: ${output_directory}
+      glob_ex: '*.manifest.txt'
+      output_parameters:
+        - task_parameter_name: manifest_file
+          expression: '${0}'
 
     task_parameters:
-      - name: manifest_file
-        label: Manifest File
+      - name: parameter_file
+        label: Parameter File
+        help: Parameter file for the cohort
         type: stage
         stage: VCF Input
-        stage_parameter_expression: ${manifest_file}
+        stage_parameter_expression: ${parameter_file}
 
-      - name: skip_existing_counts
-        type: boolean
-        label: Skip Existing Count
-        value: false
-        group: "Advanced Options"
-        optional: true
-    
+  - name: Merge Results
+    description: Merge the imported VCF results into the combined cohort annotation track
+    task_path: tasks/cohort_update.task.yaml
+    depends_on: ['Process VCF Manifests']
+
+    task_parameters:
+      - name: parameter_file
+        label: Parameter File
+        help: Parameter file for the cohort
+        type: stage
+        stage: VCF Input
+        stage_parameter_expression: ${parameter_file}
+
+      - name: manifest_parameter_file
+        label: Manifest parameter file for cohort annotation track
+        type: stage
+        stage: VCF Input
+        stage_parameter_expression: ${output_manifest_list}
 
 
