@@ -141,7 +141,7 @@ def main():
       print(f"No VCF files found in manifest file: {manifest_file}")
       sys.exit(1)
 
-    reader_threads, readers_per_flattener = calculate_thread_counts(agent_cpu_cores, 1)
+    reader_threads, readers_per_flattener = calculate_thread_counts(agent_cpu_cores, file_count)
 
     print(f"Reader threads: {reader_threads}")
     print(f"Readers per flattener: {readers_per_flattener}")
@@ -172,7 +172,6 @@ def main():
 - mergeVariantsTransform:
     onlyMergeMatchingRefAlts: true
     mergeDifferentRecordTypes: false
-    inputBufferSize: 1000
     readerWorkerThreads: {reader_threads}
     readersPerFlattener: {readers_per_flattener}
 

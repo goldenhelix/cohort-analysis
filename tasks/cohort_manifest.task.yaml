@@ -85,7 +85,7 @@ steps:
           touch "${existing_sample_names}"
         fi
 
-        python3 "${TASK_DIR}/../scripts/create_manifest_files.py" -n 256 "${existing_sample_names}" "${input_directory}" 
+        python3 "${TASK_DIR}/../scripts/create_manifest_files.py" -n 128 "${existing_sample_names}" "${input_directory}" 
 
         # Seem to need this to prevent I/O errors on windows ???, otherwise we
         # can't write the result.env file

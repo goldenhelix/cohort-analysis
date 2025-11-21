@@ -67,7 +67,7 @@ def find_files_with_new_samples(directory: str, existing_samples: Set[str]) -> L
     return files_with_new_samples
 
 
-def write_manifest_files(files: List[str], output_prefix: str, files_per_manifest: int = 256):
+def write_manifest_files(files: List[str], output_prefix: str, files_per_manifest: int = 128):
     if not files:
         print("No files to write to manifests")
         return
@@ -119,8 +119,8 @@ def main():
     parser.add_argument(
         "-n", "--files-per-manifest",
         type=int,
-        default=256,
-        help="Number of files per manifest (default: 256)"
+        default=128,
+        help="Number of files per manifest (default: 128)"
     )
 
     args = parser.parse_args()

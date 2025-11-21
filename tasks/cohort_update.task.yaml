@@ -25,28 +25,6 @@ agent_requirements:
   cpu_cores: 8
   memory_gb: 16
 
-alternative_agent_requirements:
-  Small (256):
-    cpu_cores: 8
-    memory_gb: 16
-    description: Up to ~256 samples (benchmarked at 8GB for 256 samples)
-  Medium (512):
-    cpu_cores: 16
-    memory_gb: 32
-    description: Up to ~512 samples (benchmarked at 16GB for 512 samples)
-  Large (1024):
-    cpu_cores: 32
-    memory_gb: 64
-    description: Up to ~1024 samples (benchmarked at 40GB for 1024 samples)
-  XLarge (2048):
-    cpu_cores: 64
-    memory_gb: 128
-    description: Up to ~2048 samples (benchmarked at 70GB for 2048 samples)
-  XXLarge (4096):
-    cpu_cores: 64
-    memory_gb: 256
-    description: Up to ~4096 samples (benchmarked at 140GB for 4096 samples)
-
 parameters:
   - name: manifest_parameter_file
     type: file
@@ -83,7 +61,7 @@ steps:
       - |- # shell
         #!/usr/bin/env bash
         set -ex
-        python3 "${TASK_DIR}/../scripts/cohort_merge.py" \
+        python3 -u "${TASK_DIR}/../scripts/cohort_merge.py" \
           --manifest-parameter-file "${manifest_parameter_file}" \
           --config "${parameter_file}" \
           --existing-counts "${existing_counts}" \
