@@ -22,7 +22,7 @@ description: |-
   The workflow will automatically run this task with the correct parameters.
 
 agent_requirements:
-  cpu_cores: 8
+  cpu_cores: 16 
   memory_gb: 16
 
 parameters:

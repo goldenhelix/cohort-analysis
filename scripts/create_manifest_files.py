@@ -6,6 +6,7 @@ samples not yet seen in a provided samples list.
 
 import argparse
 import os
+import sys
 import subprocess
 from pathlib import Path
 from typing import List, Set
@@ -134,6 +135,8 @@ def main():
     print(f"\nSearching for files with new samples in {args.directory}...")
     files_with_new_samples = find_files_with_new_samples(args.directory, existing_samples)
     print(f"Found {len(files_with_new_samples)} files with new samples")
+    if len(files_with_new_samples) == 0:
+        sys.exit(1)
 
     # Write manifest files
     if files_with_new_samples:

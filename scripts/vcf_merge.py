@@ -170,6 +170,7 @@ def main():
       - variantCollapsing
 
 - mergeVariantsTransform:
+    inputBufferSize: 4000
     onlyMergeMatchingRefAlts: true
     mergeDifferentRecordTypes: false
     readerWorkerThreads: {reader_threads}
