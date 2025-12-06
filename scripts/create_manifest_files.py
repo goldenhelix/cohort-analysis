@@ -6,6 +6,7 @@ samples not yet seen in a provided samples list.
 
 import argparse
 import os
+import sys
 import subprocess
 from pathlib import Path
 from typing import List, Set
@@ -67,7 +68,7 @@ def find_files_with_new_samples(directory: str, existing_samples: Set[str]) -> L
     return files_with_new_samples
 
 
-def write_manifest_files(files: List[str], output_prefix: str, files_per_manifest: int = 256):
+def write_manifest_files(files: List[str], output_prefix: str, files_per_manifest: int = 128):
     if not files:
         print("No files to write to manifests")
         return
@@ -119,8 +120,8 @@ def main():
     parser.add_argument(
         "-n", "--files-per-manifest",
         type=int,
-        default=256,
-        help="Number of files per manifest (default: 256)"
+        default=128,
+        help="Number of files per manifest (default: 128)"
     )
 
     args = parser.parse_args()
@@ -134,6 +135,8 @@ def main():
     print(f"\nSearching for files with new samples in {args.directory}...")
     files_with_new_samples = find_files_with_new_samples(args.directory, existing_samples)
     print(f"Found {len(files_with_new_samples)} files with new samples")
+    if len(files_with_new_samples) == 0:
+        sys.exit(1)
 
     # Write manifest files
     if files_with_new_samples:

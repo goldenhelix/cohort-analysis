@@ -46,19 +46,24 @@ def load_config_file(config_path):
 
 
 def calculate_thread_counts(cpu_count, file_count):
-    flatten_threads = min(min(cpu_count / 2, file_count), 10)
+    # the readers per flattener is also the number of stripes
 
-    remaining_threads = cpu_count - flatten_threads
+    # Need to have a better way to control this so we can specify the stripes seperate from the merge threads
+    #thread_count = cpu_count * 4 
+    #flatten_threads = cpu_count * 4
+    #readers_per_flattener = math.ceil(file_count / (flatten_threads -1))
+    readers_per_flattener = 1
 
     # This is the ratio of reader threads to flatten threads
-    reader_threads = max(2, math.floor(remaining_threads / flatten_threads))
-    readers_per_flattener = math.ceil(file_count / flatten_threads)
+    #remaining_threads = thread_count - flatten_threads
+    #reader_threads = max(1, math.floor(remaining_threads / flatten_threads))
+    reader_threads = 5 #max(1, math.floor(remaining_threads / flatten_threads))
 
     merge_threads = ((file_count + readers_per_flattener) / readers_per_flattener)
     total = (merge_threads * reader_threads) + merge_threads
 
     print(f"cpu_count: {cpu_count}")
-    print(f"flatten_threads: {flatten_threads}")
+    #print(f"flatten_threads: {flatten_threads}")
     print(f"readers_per_flattener: {readers_per_flattener}")
     print(f"reader_threads: {reader_threads}")
     print(f"total_threads: {total}")

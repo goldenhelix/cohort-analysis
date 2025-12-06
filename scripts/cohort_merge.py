@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 import json
 
-from cohort_utils import calculate_thread_counts, get_env_or_error, quote_if_needed, run_process_with_filtered_output, load_config_file
+from cohort_utils import get_env_or_error, quote_if_needed, run_process_with_filtered_output, load_config_file
 
 def main():
     parser = argparse.ArgumentParser(
@@ -154,19 +154,14 @@ def main():
     print(f"CPU cores: {agent_cpu_cores}")
     print(f"Memory (GB): {agent_memory_gb}")
 
-    reader_threads, readers_per_flattener = calculate_thread_counts(agent_cpu_cores, len(new_counts_files))
-
-    print(f"Reader threads: {reader_threads}")
-    print(f"Readers per flattener: {readers_per_flattener}")
-
     # Create gautil batch file
     gautil_batch_content = f"""
         - mergeVariantsTransform:
             onlyMergeMatchingRefAlts: true
             mergeDifferentRecordTypes: false
             inputBufferSize: 100
-            readerWorkerThreads: {reader_threads}
-            readersPerFlattener: {readers_per_flattener}
+            readerWorkerThreads: 1 
+            readersPerFlattener: 1 
 
         - additiveCountAlleles:
             existingCountsSource: "{existing_counts}"
@@ -228,6 +223,10 @@ def main():
         gautil_cmd,
         filter_warnings=["GAFeatureReader loop level greater than 1"]
     )
+
+    # Remove the files in the manifest file (they are temporary and take up space!)
+    for new_counts_file in new_counts_files:
+        os.remove(new_counts_file)
 
     # Precompute the output file
     print("Precomputing output file...")

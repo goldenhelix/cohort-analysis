@@ -23,8 +23,8 @@ description: |-
   The workflow will automatically run this task with the correct parameters.
 
 agent_requirements:
-  cpu_cores: 16 
-  memory_gb: 32 
+  cpu_cores: 32 
+  memory_gb: 64 
 
 parameters:
   - name: manifest_file
@@ -47,6 +47,6 @@ steps:
       - |- # shell
         #!/usr/bin/env bash
         set -ex
-        python3 "${TASK_DIR}/../scripts/vcf_merge.py" \
+        python3 -u "${TASK_DIR}/../scripts/vcf_merge.py" \
           --config "${parameter_file}" \
           --manifest-file "${manifest_file}" 
