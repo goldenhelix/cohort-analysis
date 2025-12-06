@@ -94,7 +94,6 @@ steps:
         fi
 
         python3 "${TASK_DIR}/../scripts/create_manifest_files.py" -n ${merge_step_file_count} "${existing_sample_names}" "${input_directory}" 
-
         # Seem to need this to prevent I/O errors on windows ???, otherwise we
         # can't write the result.env file
         echo "Working directory: $(pwd)/.., contains $(ls -la ../.)"
