@@ -177,6 +177,10 @@ def main():
             sourceNamePrefix: "{source_name}"
             outputSampleNamesThreshold: {sample_name_threshold}
 
+        - filterByExpr:
+            # Only keep variants where frequency > 0
+            expr: any(AlleleCounts >= 0)
+
         - runTaskLists:
             taskLists:
               - SourceTaskListTask:
