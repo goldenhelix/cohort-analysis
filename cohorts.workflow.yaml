@@ -18,6 +18,7 @@ stages:
         label: Parameter File
         help: Parameter file for the cohort
         type: file
+        path: AppData/Common Data/UserAnnotations/cohorts
         persist_key: 'cohorts.parameter_file'
 
   - name: Process VCF Manifests

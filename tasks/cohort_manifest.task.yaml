@@ -87,7 +87,7 @@ steps:
 
         EOF
           "${gautil_path}" read sample_names.txsource | cut -f 5 > "${existing_sample_names}"
-          echo "Extracted $(wc -l < existing_sample_names) sample names from existing counts file."
+          echo "Extracted $(wc -l < "${existing_sample_names}") sample names from existing counts file."
         else
           echo "No existing counts file provided or found."
           touch "${existing_sample_names}"

@@ -43,9 +43,55 @@ def main():
 
     # Load configuration from file
     config = load_config_file(args.config)
-    manifest_parameter_file = args.manifest_parameter_file
 
+    cohort_name = config['cohort_name']
+    series_name = config['series_name']
+    source_version = datetime.utcnow().strftime("%Y-%m-%d-%H-%M")
+
+    # Get required environment variables
+    workspace_dir = get_env_or_error('WORKSPACE_DIR')
+    gh_workspace_assembly = get_env_or_error('GH_WORKSPACE_ASSEMBLY')
+
+    # Optional environment variables
+    agent_cpu_cores = int(os.environ.get('AGENT_CPU_CORES'))
+    agent_memory_gb = int(os.environ.get('AGENT_MEMORY_GB'))
+    task_dir = os.environ.get('TASK_DIR')
+
+
+    manifest_parameter_file = args.manifest_parameter_file
     print(f"Loading manifest parameter file: {manifest_parameter_file}")
+
+    # Find the existing counts
+    if args.existing_counts:
+        existing_counts = args.existing_counts
+    else:
+        # Look for the most recent counts file
+        existing_counts = config['out_file']
+        existing_counts = os.path.join(workspace_dir, existing_counts)
+        if existing_counts.endswith('.tsf'):
+            existing_counts = existing_counts[:-4]
+
+        existing_counts = f"{existing_counts}_*.tsf"
+        print(f"Looking for existing counts {existing_counts}")
+        existing_counts = glob.glob(existing_counts)
+        if existing_counts:
+            # sort the files by name which should be the same as the source version
+            existing_counts = sorted(existing_counts, key=os.path.basename)
+            existing_counts = existing_counts[-1]
+        else:
+            existing_counts = None
+    
+    existing_counts_samples = None
+    if existing_counts:
+      print(f"Using existing counts: {existing_counts}")
+      existing_counts_samples = f"{existing_counts}:2"
+    else:
+      print("No existing counts file found")
+      existing_counts = ""
+      existing_counts_samples = ""
+
+
+
     new_counts_files = []
 
     manifest_file_base = os.path.basename(manifest_parameter_file)
@@ -68,21 +114,6 @@ def main():
       print("No new processed files found")
       sys.exit(1)
 
-    #
-    cohort_name = config['cohort_name']
-    series_name = config['series_name']
-    source_version = datetime.utcnow().strftime("%Y-%m-%d-%H-%M")
-
-    # Get required environment variables
-    workspace_dir = get_env_or_error('WORKSPACE_DIR')
-    gh_workspace_assembly = get_env_or_error('GH_WORKSPACE_ASSEMBLY')
-
-    # Optional environment variables
-    agent_cpu_cores = int(os.environ.get('AGENT_CPU_CORES'))
-    agent_memory_gb = int(os.environ.get('AGENT_MEMORY_GB'))
-    task_dir = os.environ.get('TASK_DIR')
-
-
     out_file = args.out_file
     if not out_file:
         out_file = config['out_file']
@@ -97,30 +128,6 @@ def main():
 
     out_file = os.path.join(workspace_dir, out_file)
     
-
-    # Find the existing counts
-    if args.existing_counts:
-        existing_counts = args.existing_counts
-    else:
-        # Look for the most recent counts file
-        existing_counts = f"{out_file}_*.tsf"
-        existing_counts = glob.glob(existing_counts)
-        if existing_counts:
-            # sort the files by name which should be the same as the source version
-            existing_counts = sorted(existing_counts, key=os.path.basename)
-            existing_counts = existing_counts[-1]
-        else:
-            existing_counts = None
-    
-    existing_counts_samples = None
-    if existing_counts:
-      print(f"Using existing counts: {existing_counts}")
-      existing_counts_samples = f"{existing_counts}:2"
-    else:
-      print("No existing counts file found")
-      existing_counts = ""
-      existing_counts_samples = ""
-
 
     sample_name_threshold = int(config.get('sample_name_threshold', '20'))
     info_filter = config.get('info_filter')
