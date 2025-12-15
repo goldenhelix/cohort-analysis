@@ -179,7 +179,7 @@ def main():
 
         - filterByExpr:
             # Only keep variants where frequency > 0
-            expr: any(AlleleCounts >= 0)
+            expr: any(AlleleCounts > 0)
 
         - runTaskLists:
             taskLists:
