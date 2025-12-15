@@ -34,7 +34,7 @@ parameters:
     type: string
     label: Filter Expression (INFO fields)
     help: INFO field symbol names, comparisons (>, <, >=, <=, ==, !=), (and, or), operators (/ , +, - , * , ~) and values
-    value: all( FILTER == "MLrejected" )
+    value: 'all( FILTER == "MLrejected" )'
     optional: true
 
   - name: format_filter
