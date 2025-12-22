@@ -36,18 +36,14 @@ def read_existing_samples(samples_file: str) -> Set[str]:
 def find_files_with_new_samples(directory: str, existing_samples: Set[str]) -> List[str]:
     files_with_new_samples = []
 
-    # Get all files in the directory (non-recursive)
+    # Get all vcf.gz files in the directory (recursive)
     dir_path = Path(directory)
     if not dir_path.is_dir():
         raise ValueError(f"{directory} is not a valid directory")
 
-    for file_path in sorted(dir_path.iterdir()):
+    for file_path in sorted(dir_path.rglob('*.vcf.gz')):
         if file_path.is_file():
             try:
-                # if the extension is not 'vcf.gz' continue
-                if file_path.suffix != '.gz' or file_path.stem.split('.')[-1] != 'vcf':
-                    continue
-         
                 # Get sample names from this file
                 sample_names = get_sample_names_from_file(str(file_path))
                 print(f"Processing {file_path}: found {sample_names}")
