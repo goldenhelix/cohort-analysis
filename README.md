@@ -34,9 +34,9 @@ Records whose QUAL column is at or below this value are excluded. QUAL is a firs
 
 Samples whose FORMAT/DP is at or below this value are excluded from the allele-count tally for that record; they do not affect other samples at the same site. Raise for high-coverage cohorts or lower for exomes/targeted panels. Set to `0` to disable. `DP` must be declared in every input VCF's header or the run will fail.
 
-### `min_gq` (per-sample) — default `20`
+### `min_gq` (per-sample) — default `10`
 
-Samples whose FORMAT/GQ is below this value are excluded from the allele-count tally for that record. `20` is the community-standard high-confidence genotype threshold. Set to `0` to disable. `GQ` must be declared in every input VCF's header or the run will fail.
+Samples whose FORMAT/GQ is below this value are excluded from the allele-count tally for that record. `10` keeps reasonably-confident genotypes while retaining enough data for meaningful cohort denominators; raise toward the GATK-recommended `20` for high-confidence-only cohorts. Set to `0` to disable. `GQ` must be declared in every input VCF's header or the run will fail.
 
 ### `include_reference_confident_loci` — default `true`
 
