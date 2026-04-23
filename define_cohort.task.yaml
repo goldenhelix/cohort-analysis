@@ -28,20 +28,61 @@ parameters:
     type: integer
     label: The number of files to merge at a time in each vcf merge step
     help: This can be adjusted to ensure that the performance stays within the bounds of the runner
-    value: 128 
+    value: 128
 
-  - name: info_filter
-    type: string
-    label: Filter Expression (INFO fields)
-    help: INFO field symbol names, comparisons (>, <, >=, <=, ==, !=), (and, or), operators (/ , +, - , * , ~) and values
-    value: 'all( FILTER == "MLrejected" )'
+  - name: min_qual
+    type: integer
+    label: Minimum QUAL
+    help: >-
+      Site-level quality floor. Records with QUAL at or below this value are
+      excluded from the cohort. Set to 0 to disable. Default 10 matches typical
+      germline calling practice. On gVCF inputs, reference-confident blocks
+      have no QUAL value and are handled via
+      `include_reference_confident_loci` rather than this filter.
+    value: 10
     optional: true
 
-  - name: format_filter
-    type: string
-    label: Filter Expression (FORMAT fields)
-    help: FORMAT field symbol names, comparisons (>, <, >=, <=, ==, !=), (and, or), operators (/ , +, - , * , ~) and values
-    value: "DP > 2"
+  - name: min_dp
+    type: integer
+    label: Minimum DP
+    help: >-
+      Per-sample read-depth floor. Samples with DP at or below this value are
+      excluded from the allele-count tally for that record. Set to 0 to
+      disable. Default 3 keeps samples with at least minimal coverage; raise
+      for high-coverage cohorts or lower for exome/targeted panels. DP must
+      be declared in every input VCF's FORMAT header or the run will fail
+      up-front.
+    value: 3
+    optional: true
+
+  - name: min_gq
+    type: integer
+    label: Minimum GQ
+    help: >-
+      Per-sample genotype-quality floor. Samples with GQ below this value are
+      excluded from the allele-count tally for that record. Set to 0 to
+      disable. Default 20 is the community-standard high-confidence genotype
+      threshold. GQ must be declared in every input VCF's FORMAT header or
+      the run will fail up-front.
+    value: 20
+    optional: true
+
+  - name: include_reference_confident_loci
+    type: boolean
+    label: Include Reference-Confident Loci (gVCF)
+    help: >-
+      When true (default), loci where no sample in the cohort carries a
+      variant allele are kept in the output. For gVCF inputs this preserves
+      the "evidence of absence" signal carried by homozygous-reference blocks
+      and is essential for meaningful allele-frequency denominators — a
+      position with 0/100 alt alleles is different information than a
+      position that was never sequenced. When false, the post-merge
+      `any(AlleleCounts > 0)` filter is applied and zero-count loci are
+      dropped from the output. Joint-called VCFs typically do not contain
+      zero-count records, so this toggle is effectively a no-op for pure
+      joint-VCF cohorts. Mixed gVCF / joint-VCF cohorts are not supported in
+      a single run — split them into separate cohorts.
+    value: true
     optional: true
 
 steps:
@@ -75,8 +116,10 @@ steps:
         echo "series_name=${series_name}" >> "${out_parameter_file}"
         echo "out_file=${out_file}" >> "${out_parameter_file}"
         echo "sample_name_threshold=${sample_name_threshold}" >> "${out_parameter_file}"
-        echo "info_filter=${info_filter}" >> "${out_parameter_file}"
-        echo "format_filter=${format_filter}" >> "${out_parameter_file}"
+        echo "min_qual=${min_qual}" >> "${out_parameter_file}"
+        echo "min_dp=${min_dp}" >> "${out_parameter_file}"
+        echo "min_gq=${min_gq}" >> "${out_parameter_file}"
+        echo "include_reference_confident_loci=${include_reference_confident_loci}" >> "${out_parameter_file}"
         echo "merge_step_file_count=${merge_step_file_count}" >> "${out_parameter_file}"
 
         echo "Settings file created ${out_parameter_file}:"

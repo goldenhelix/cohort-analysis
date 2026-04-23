@@ -11,7 +11,14 @@ from datetime import datetime
 from pathlib import Path
 import json
 
-from cohort_utils import calculate_thread_counts, get_env_or_error, quote_if_needed, run_process_with_filtered_output, load_config_file
+from cohort_utils import (
+    calculate_thread_counts,
+    get_env_or_error,
+    load_config_file,
+    parse_bool,
+    parse_int,
+    run_process_with_filtered_output,
+)
 
 
 def check_tbi_files(manifest_file):
@@ -37,6 +44,64 @@ def check_tbi_files(manifest_file):
         sys.exit(1)
 
     print("All TBI index files found.")
+
+
+def classify_manifest_cohort(manifest_file):
+    """Peek at the first VCF in the manifest and return 'gvcf' if its header
+    declares ##INFO=<ID=END,...>, else 'joint'. Upstream (create_manifest_files)
+    has already validated that every file in the manifest shares a single
+    classification, so a single probe suffices."""
+    first_vcf = None
+    with open(manifest_file, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#'):
+                first_vcf = line
+                break
+    if not first_vcf:
+        print(f"Error: Manifest {manifest_file} contains no VCF entries.", file=sys.stderr)
+        sys.exit(1)
+    header = subprocess.run(
+        ["bcftools", "view", "-h", first_vcf],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    for line in header.splitlines():
+        if line.startswith("##INFO=<ID=END,"):
+            return "gvcf"
+    return "joint"
+
+
+def build_filter_section(min_qual, min_dp, min_gq, cohort_type, include_reference_confident_loci):
+    """Compose the filterByExpr block. INFO-level `expr` guards null QUAL on
+    gVCF reference-confident blocks by short-circuiting on END when the
+    cohort is gVCF and we want those blocks preserved; joint cohorts use a
+    plain QUAL threshold because they have no reference-confident records.
+    FORMAT-level `sampleExpr` joins the active per-sample thresholds with
+    `and`."""
+    if min_qual > 0:
+        if cohort_type == "gvcf" and include_reference_confident_loci:
+            info_expr = f"END > 0 or QUAL > {min_qual}"
+        else:
+            info_expr = f"QUAL > {min_qual}"
+    else:
+        info_expr = None
+
+    sample_terms = []
+    if min_dp > 0:
+        sample_terms.append(f"DP > {min_dp}")
+    if min_gq > 0:
+        sample_terms.append(f"GQ >= {min_gq}")
+    sample_expr = " and ".join(sample_terms) if sample_terms else None
+
+    if not info_expr and not sample_expr:
+        return ""
+
+    section = "      - filterByExpr:\n"
+    if info_expr:
+        section += f'          expr: "{info_expr}"\n'
+    if sample_expr:
+        section += f'          sampleExpr: "{sample_expr}"\n'
+    return section
 
 
 
@@ -72,8 +137,12 @@ def main():
     cohort_name = config['cohort_name']
     series_name = config['series_name']
     sample_name_threshold = int(config.get('sample_name_threshold', '20'))
-    info_filter = config.get('info_filter')
-    format_filter = config.get('format_filter')
+    min_qual = parse_int(config.get('min_qual'), 10)
+    min_dp = parse_int(config.get('min_dp'), 3)
+    min_gq = parse_int(config.get('min_gq'), 20)
+    include_reference_confident_loci = parse_bool(
+        config.get('include_reference_confident_loci'), True
+    )
 
     gautil_path = os.environ.get('GAUTIL_PATH', '/opt/apiserver/gautil')
 
@@ -114,16 +183,20 @@ def main():
     if os.path.exists(crash_dump_dir):
         os.environ['GH_CRASH_DUMP_DIR'] = crash_dump_dir
 
-    # Build filter by expression section
-    filter_by_expr_section = ""
-    if info_filter or format_filter:
-        filter_by_expr_section = "      - filterByExpr:\n"
-        if info_filter:
-            quoted_info_filter = quote_if_needed(info_filter)
-            filter_by_expr_section += f"          expr: {quoted_info_filter}\n"
-        if format_filter:
-            quoted_format_filter = quote_if_needed(format_filter)
-            filter_by_expr_section += f"          sampleExpr: {quoted_format_filter}\n"
+    cohort_type = classify_manifest_cohort(manifest_file)
+    print(f"Cohort type for this manifest: {cohort_type}")
+    print(
+        f"Thresholds: min_qual={min_qual}, min_dp={min_dp}, min_gq={min_gq}, "
+        f"include_reference_confident_loci={include_reference_confident_loci}"
+    )
+
+    filter_by_expr_section = build_filter_section(
+        min_qual, min_dp, min_gq, cohort_type, include_reference_confident_loci
+    )
+    if filter_by_expr_section:
+        print("Filter section:\n" + filter_by_expr_section)
+    else:
+        print("No filter thresholds set; skipping filterByExpr.")
 
     print(f"CPU cores: {agent_cpu_cores}")
     print(f"Memory (GB): {agent_memory_gb}")

@@ -11,7 +11,12 @@ from datetime import datetime
 from pathlib import Path
 import json
 
-from cohort_utils import get_env_or_error, quote_if_needed, run_process_with_filtered_output, load_config_file
+from cohort_utils import (
+    get_env_or_error,
+    load_config_file,
+    parse_bool,
+    run_process_with_filtered_output,
+)
 
 def main():
     parser = argparse.ArgumentParser(
@@ -130,8 +135,9 @@ def main():
     
 
     sample_name_threshold = int(config.get('sample_name_threshold', '20'))
-    info_filter = config.get('info_filter')
-    format_filter = config.get('format_filter')
+    include_reference_confident_loci = parse_bool(
+        config.get('include_reference_confident_loci'), True
+    )
 
     gautil_path = os.environ.get('GAUTIL_PATH', '/opt/apiserver/gautil')
 
@@ -161,14 +167,24 @@ def main():
     print(f"CPU cores: {agent_cpu_cores}")
     print(f"Memory (GB): {agent_memory_gb}")
 
-    # Create gautil batch file
+    # When IRCL is true (default) we keep loci where no sample has a variant
+    # allele, because on gVCF inputs those rows carry the reference-confident
+    # evidence that makes cohort allele frequencies meaningful. When IRCL is
+    # false we re-introduce the historical any(AlleleCounts > 0) filter.
+    ac_filter_section = ""
+    if not include_reference_confident_loci:
+        ac_filter_section = (
+            "        - filterByExpr:\n"
+            "            expr: any(AlleleCounts > 0)\n\n"
+        )
+
     gautil_batch_content = f"""
         - mergeVariantsTransform:
             onlyMergeMatchingRefAlts: true
             mergeDifferentRecordTypes: false
             inputBufferSize: 100
-            readerWorkerThreads: 1 
-            readersPerFlattener: 1 
+            readerWorkerThreads: 1
+            readersPerFlattener: 1
 
         - additiveCountAlleles:
             existingCountsSource: "{existing_counts}"
@@ -177,11 +193,7 @@ def main():
             sourceNamePrefix: "{source_name}"
             outputSampleNamesThreshold: {sample_name_threshold}
 
-        - filterByExpr:
-            # Only keep variants where frequency > 0
-            expr: any(AlleleCounts > 0)
-
-        - runTaskLists:
+{ac_filter_section}        - runTaskLists:
             taskLists:
               - SourceTaskListTask:
                   taskList:

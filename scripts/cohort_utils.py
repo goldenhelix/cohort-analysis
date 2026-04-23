@@ -87,6 +87,20 @@ def quote_if_needed(value):
     return f'"{value}"'
 
 
+def parse_int(value, default):
+    """Parse a parameter-file string into an int, returning default on empty/None."""
+    if value is None or value == "":
+        return default
+    return int(value)
+
+
+def parse_bool(value, default):
+    """Parse a parameter-file string into a bool, returning default on empty/None."""
+    if value is None or value == "":
+        return default
+    return value.strip().lower() in ("1", "true", "yes", "on")
+
+
 
 def run_process_with_filtered_output(command, filter_warnings=None):
     """
