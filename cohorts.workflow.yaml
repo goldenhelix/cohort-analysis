@@ -1,28 +1,100 @@
 name: Build Cohort Annotation Track
-description: Generate or update a cohort allele frequency annotation track from VCF files using the specified cohort definition. If the cohort already exists, a new version is created with merged variant frequencies.
+description: Generate or update a cohort allele frequency annotation track from VCF files. If an existing cohort TSF is selected, a new version is created by adding the input samples to its counts; otherwise a new cohort is built from scratch.
 
 stages:
   - name: VCF Input
-    description: Generate manifest file from VCF directory
+    description: Resolve cohort identity, validate input headers, write per-batch manifests.
     task_path: tasks/cohort_manifest.task.yaml
     depends_on: []
     task_parameters:
       - name: input_directory
         label: VCF Input Directory
-        help: Directory containing *.vcf.gz files to process
+        help: Directory containing *.vcf.gz files to add to the cohort.
         type: directory
         supports_location_mode: 'read_only'
         persist_key: 'cohorts.input_directory'
 
-      - name: parameter_file
-        label: Parameter File
-        help: Parameter file for the cohort
+      - name: cohort_name
+        label: Cohort Name
+        help: >-
+          Display name for the cohort (becomes the variant-frequency source
+          name in VarSeq). Required for new cohorts. Ignored when an existing
+          cohort TSF is selected — the metadata from the selected TSF wins, and
+          the override is announced in the run log.
+        type: string
+        value: ""
+        optional: true
+        persist_key: 'cohorts.cohort_name'
+
+      - name: series_name
+        label: Series Name
+        help: >-
+          Series identifier used as the cohort TSF filename stem and as the
+          seriesName in TSF metadata. If blank for a new cohort it is
+          auto-derived by slugifying the cohort name. Ignored when an existing
+          cohort TSF is selected.
+        type: string
+        value: ""
+        optional: true
+        persist_key: 'cohorts.series_name'
+
+      - name: existing_counts
+        label: Existing Cohort TSF (to update)
+        help: >-
+          Optional. Pick a prior cohort TSF to add samples to it. The cohort
+          name and series name are taken from this TSF's metadata and any
+          typed values are ignored. Leave blank to create a new cohort, or to
+          auto-discover the latest TSF matching the typed series name.
         type: file
-        path: AppData/Common Data/UserAnnotations/cohorts
-        persist_key: 'cohorts.parameter_file'
+        pattern_match: ["*.tsf"]
+        optional: true
+        persist_key: 'cohorts.existing_counts'
+
+      - name: min_qual
+        label: Minimum QUAL
+        help: Site-level QUAL floor. 0 disables.
+        type: integer
+        value: 10
+        group: "Filtering"
+        optional: true
+
+      - name: min_dp
+        label: Minimum DP
+        help: Per-sample read-depth floor. 0 disables. DP must be declared in every input VCF header when > 0.
+        type: integer
+        value: 3
+        group: "Filtering"
+        optional: true
+
+      - name: min_gq
+        label: Minimum GQ
+        help: Per-sample genotype-quality floor. 0 disables. GQ must be declared in every input VCF header when > 0.
+        type: integer
+        value: 10
+        group: "Filtering"
+        optional: true
+
+      - name: include_reference_confident_loci
+        label: Include Reference-Confident Loci (gVCF)
+        help: >-
+          When true, gVCF homozygous-reference blocks are preserved (the
+          "evidence of absence" signal that makes cohort allele frequencies
+          meaningful). When false, zero-count loci are dropped post-merge.
+        type: boolean
+        value: true
+        group: "Filtering"
+        optional: true
+
+      - name: merge_step_file_count
+        label: Files Per Merge Batch
+        help: Number of VCFs processed per vcf_merge invocation. Tune for runner resources.
+        type: integer
+        value: 128
+        group: "Advanced Options"
+        optional: true
 
   - name: Process VCF Manifests
-    description: Generate manifest file from VCF directory
+    description: Filter and merge VCFs for each manifest batch into an intermediate TSF.
     task_path: tasks/vcf_import.task.yaml
     depends_on: ['VCF Input']
 
@@ -37,30 +109,90 @@ stages:
           expression: '${0}'
 
     task_parameters:
-      - name: parameter_file
-        label: Parameter File
-        help: Parameter file for the cohort
+      - name: cohort_type
+        label: Cohort Type
         type: stage
         stage: VCF Input
-        stage_parameter_expression: ${parameter_file}
+        stage_parameter_expression: ${cohort_type}
+
+      - name: series_name
+        label: Series Name
+        type: stage
+        stage: VCF Input
+        stage_parameter_expression: ${series_name}
+
+      - name: min_qual
+        label: Minimum QUAL
+        type: stage
+        stage: VCF Input
+        stage_parameter: min_qual
+
+      - name: min_dp
+        label: Minimum DP
+        type: stage
+        stage: VCF Input
+        stage_parameter: min_dp
+
+      - name: min_gq
+        label: Minimum GQ
+        type: stage
+        stage: VCF Input
+        stage_parameter: min_gq
+
+      - name: include_reference_confident_loci
+        label: Include Reference-Confident Loci
+        type: stage
+        stage: VCF Input
+        stage_parameter: include_reference_confident_loci
 
   - name: Merge Results
-    description: Merge the imported VCF results into the combined cohort annotation track
+    description: Combine per-manifest TSFs into the final cohort annotation track.
     task_path: tasks/cohort_update.task.yaml
     depends_on: ['Process VCF Manifests']
 
     task_parameters:
-      - name: parameter_file
-        label: Parameter File
-        help: Parameter file for the cohort
-        type: stage
-        stage: VCF Input
-        stage_parameter_expression: ${parameter_file}
-
       - name: manifest_parameter_file
-        label: Manifest parameter file for cohort annotation track
+        label: Manifest List
         type: stage
         stage: VCF Input
         stage_parameter_expression: ${output_manifest_list}
 
+      - name: cohort_name
+        label: Cohort Name
+        type: stage
+        stage: VCF Input
+        stage_parameter_expression: ${cohort_name}
 
+      - name: series_name
+        label: Series Name
+        type: stage
+        stage: VCF Input
+        stage_parameter_expression: ${series_name}
+
+      - name: existing_counts
+        label: Existing Counts Path
+        type: stage
+        stage: VCF Input
+        stage_parameter_expression: ${existing_counts}
+
+      - name: sample_name_threshold
+        label: Sample Name Threshold
+        help: Maximum number of sample names to list for rare variants.
+        type: integer
+        value: 20
+        group: "Advanced Options"
+        optional: true
+
+      - name: include_reference_confident_loci
+        label: Include Reference-Confident Loci
+        type: stage
+        stage: VCF Input
+        stage_parameter: include_reference_confident_loci
+
+      - name: out_file
+        label: Output File Override
+        help: Workspace-relative override for the output TSF path. Leave blank to use the default location derived from series_name.
+        type: file
+        group: "Advanced Options"
+        create: true
+        optional: true

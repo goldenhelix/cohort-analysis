@@ -1,61 +1,44 @@
 # Build Cohort Annotation Track
 
-Generate or update a cohort allele frequency annotation track from VCF files using the specified cohort definition. If the cohort already exists, a new version is created with merged variant frequencies.
+Generate or update a cohort allele-frequency annotation track from VCF files. If you select an existing cohort TSF, a new version is produced with the new samples' counts added; otherwise a new cohort is built from scratch.
 
 ## Usage
 
-### Step 1: Define Cohort (First Time Only)
+Run the **Build Cohort Annotation Track** workflow and fill in the form. There is no separate "define cohort" step — every tunable value is on the workflow's run form, with defaults.
 
-If you haven't created a cohort yet, first run the **Define Cohort** task to create a cohort parameter file. Parameters:
+### Primary fields
 
-- **Cohort Name**: Name for your cohort.
-- **Series Name**: Name for the series.
-- **Sample Name Threshold**: Maximum number of sample names to list for rare variants (default: 20).
-- **Merge Step File Count**: Number of files merged per step (default: 128); tune for runner resources.
-- **Minimum QUAL / DP / GQ**: Quality filters, see [Parameters](#parameters) below.
-- **Include Reference-Confident Loci (gVCF)**: Controls whether gVCF reference blocks are preserved, see [Parameters](#parameters).
+- **VCF Input Directory** *(required)* — folder of `*.vcf.gz` files to add to the cohort. Scanned recursively; files whose samples are already present in the selected cohort are skipped.
+- **Cohort Name** — display name for the cohort. Required for new cohorts. **Ignored** when an existing cohort TSF is selected — the metadata from the selected TSF is used and the override is announced in the run log.
+- **Series Name** — identifier used as the cohort TSF's filename stem and `seriesName` metadata. If you leave it blank when starting a new cohort, it's auto-derived by slugifying the cohort name (lowercase, spaces→underscores). Same override rule as above when an existing TSF is picked.
+- **Existing Cohort TSF** *(optional)* — pick a prior cohort TSF to extend. When set, it's the source of truth for cohort identity. When blank, the workflow will also try to auto-discover the latest TSF matching the typed series name; if found, its identity is used (and logged). If neither is present or found, a new cohort is created.
 
-### Step 2: Build Cohort Annotation Track
+### Filtering (group)
 
-Run the **Build Cohort Annotation Track** workflow with these parameters:
+Typed thresholds replace the old free-form filter expressions. Each can be disabled by setting it to `0`. Before the merge, every input VCF's header is scanned to confirm it declares the FORMAT fields referenced by the active thresholds; missing declarations cause the run to fail fast with the offending files listed.
 
-1. **VCF Input Directory**: Directory containing `*.vcf.gz` files to process.
-2. **Cohort Parameter File**: Select the cohort parameter file created in Step 1.
+- **Minimum QUAL** — default `10`. Site-level QUAL floor. `QUAL` is always present by VCF spec; gVCF reference blocks with `QUAL=.` are handled via the reference-confident-loci toggle below.
+- **Minimum DP** — default `3`. Per-sample depth floor. Samples below it are excluded from the allele-count tally for that record (without affecting other samples at the same site). Must be declared in FORMAT.
+- **Minimum GQ** — default `10`. Per-sample genotype-quality floor. `10` retains enough data for meaningful cohort denominators; raise toward GATK's `20` for high-confidence-only cohorts. Must be declared in FORMAT.
+- **Include Reference-Confident Loci (gVCF)** — default `true`. When true, loci where no sample in the cohort has a variant allele are kept. On gVCF inputs this preserves the evidence-of-absence signal — a position with 0/100 alt alleles is meaningfully different from a position never sequenced. When false, a post-merge `any(AlleleCounts > 0)` filter drops zero-count loci.
 
-## Parameters
+### Advanced Options (group)
 
-Quality thresholds are typed, not free-form filter expressions. Each may be disabled by setting it to `0`. Before the merge runs, every input VCF's header is scanned to confirm it declares the FORMAT fields referenced by the active thresholds; missing declarations cause the run to fail fast with the offending files listed.
+- **Sample Name Threshold** — default `20`. Max sample names to list in per-variant metadata for rare variants.
+- **Files Per Merge Batch** — default `128`. Batch size for the per-manifest merge step; tune for runner memory.
+- **Output File Override** — optional. Workspace-relative path for the output TSF. Defaults to `AppData/Common Data/UserAnnotations/cohorts/{series_name}_{timestamp}.tsf`.
 
-### `min_qual` (site-level) — default `10`
+## gVCF and joint-VCF cohorts
 
-Records whose QUAL column is at or below this value are excluded. QUAL is a first-class VCF column (column 6), always present by spec, but may be missing (`.`) on gVCF reference-confident blocks. Those blocks are handled by the `include_reference_confident_loci` toggle below, not by this threshold. Set to `0` to disable.
-
-### `min_dp` (per-sample) — default `3`
-
-Samples whose FORMAT/DP is at or below this value are excluded from the allele-count tally for that record; they do not affect other samples at the same site. Raise for high-coverage cohorts or lower for exomes/targeted panels. Set to `0` to disable. `DP` must be declared in every input VCF's header or the run will fail.
-
-### `min_gq` (per-sample) — default `10`
-
-Samples whose FORMAT/GQ is below this value are excluded from the allele-count tally for that record. `10` keeps reasonably-confident genotypes while retaining enough data for meaningful cohort denominators; raise toward the GATK-recommended `20` for high-confidence-only cohorts. Set to `0` to disable. `GQ` must be declared in every input VCF's header or the run will fail.
-
-### `include_reference_confident_loci` — default `true`
-
-Controls what happens to loci where no sample in the cohort carries a variant allele.
-
-- **`true` (default, correct for gVCF cohorts):** those loci are kept. On gVCF inputs, they carry the "evidence of absence" signal — a position covered by every sample but with zero variant alleles is meaningfully different from a position never sequenced. Dropping them breaks allele-frequency denominators.
-- **`false`:** a post-merge `any(AlleleCounts > 0)` filter drops zero-count loci. Use this for joint-called cohorts when you only want records with at least one alternate allele, or when output size is a concern and evidence-of-absence is not.
-
-**gVCF / joint-VCF homogeneity required:** this workflow classifies each input VCF by whether it declares `##INFO=<ID=END,...>` (gVCF) or not (joint-called). A cohort that mixes both kinds is rejected up-front, because the QUAL-filter expression must guard against null QUAL on gVCF reference blocks (`END > 0 or QUAL > {min_qual}`) while joint-called VCFs do not declare `END`. Split mixed cohorts into separate runs, or set `min_qual=0` to sidestep the QUAL filter entirely.
+The workflow classifies each input VCF as **gVCF** (declares `##INFO=<ID=END,...>`) or **joint-called** (does not). Cohorts must be homogeneous — mixing gVCFs and joint VCFs in one run is rejected up-front with a per-category file list. This is required because the QUAL-filter expression must short-circuit on `END` for gVCFs (to preserve reference-confident blocks with null QUAL) but cannot reference `END` on joint VCFs (which don't declare it). Split mixed inputs into separate cohorts, or set `min_qual=0` to disable the QUAL filter entirely.
 
 ## Process
 
-1. Scans every input VCF's header; validates required FORMAT declarations; classifies the cohort as gVCF or joint; fails fast on mixed cohorts.
-2. Reads variants from the input VCF files.
-3. Applies `min_qual` (site), `min_dp` (per-sample), `min_gq` (per-sample) filters; composes the expression so that gVCF reference-confident blocks survive when `include_reference_confident_loci` is true.
-4. Merges filtered variants with existing variant counts.
-5. Creates or updates the cohort annotation track.
+1. **Manifest stage** — resolves cohort identity (typed values vs. TSF metadata, with loud override logging), reads existing sample list from the selected TSF, scans the input directory for new-sample VCFs, validates their headers, classifies the cohort, writes per-batch manifests.
+2. **Per-manifest merge** — filters variants and builds an intermediate TSF for each batch.
+3. **Final merge** — combines the intermediate TSFs into the cohort annotation track via gautil's `additiveCountAlleles`; applies the zero-count filter if `include_reference_confident_loci` is false; precomputes the output.
 
 ## Output
 
-- Updated cohort annotation track with merged variant frequencies.
-- Results stored in the user annotations folder.
+- Cohort annotation track at `AppData/Common Data/UserAnnotations/cohorts/{series_name}_{YYYY-MM-DD-HH-MM}.tsf` (or the override path).
+- Existing older versions of the same cohort remain on disk for provenance.

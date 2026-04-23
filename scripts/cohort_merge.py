@@ -1,178 +1,120 @@
 #!/usr/bin/env python3
 """
-Cohort Annotation Track Updater
+Final merge stage. Takes the per-manifest intermediate TSFs produced by
+vcf_merge.py and combines them into a single cohort allele-frequency TSF via
+gautil's additiveCountAlleles transform.
+
+When include_reference_confident_loci=false we re-introduce the historical
+post-merge `any(AlleleCounts > 0)` filter. When true (default) we keep
+zero-count loci so gVCF reference-confident blocks continue to carry
+evidence-of-absence signal into the cohort catalog.
 """
-import glob
-import os
-import sys
-import subprocess
+
 import argparse
+import os
+import subprocess
+import sys
 from datetime import datetime
-from pathlib import Path
-import json
 
 from cohort_utils import (
     get_env_or_error,
-    load_config_file,
     parse_bool,
     run_process_with_filtered_output,
 )
 
-def main():
-    parser = argparse.ArgumentParser(
-        description='Update cohort variant frequencies track by adding new samples',
-        formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    parser.add_argument(
-        '--config',
-        required=True,
-        help='Configuration file with parameters (key=value per line)'
-    )
-    parser.add_argument(
-        '--manifest-parameter-file',
-        required=True,
-        help='Path to the manifest parameter file containing VCF file paths'
-    )
-    parser.add_argument(
-        '--existing-counts',
-        required=False,
-        help='Path to the existing counts file'
-    )
-    parser.add_argument(
-        '--out-file',
-        required=False,
-        help='Path to the output file'
-    )
 
+COHORTS_DIR_REL = "AppData/Common Data/UserAnnotations/cohorts"
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Merge per-manifest TSFs into the cohort track.")
+    parser.add_argument("--manifest-parameter-file", required=True,
+                        help="manifest_list.csv written by the manifest stage")
+    parser.add_argument("--cohort-name", required=True)
+    parser.add_argument("--series-name", required=True)
+    parser.add_argument("--existing-counts", default="",
+                        help="Path to existing cohort TSF (resolved by the manifest stage)")
+    parser.add_argument("--sample-name-threshold", type=int, default=20)
+    parser.add_argument("--include-reference-confident-loci", default="true")
+    parser.add_argument("--out-file", default="",
+                        help="Optional override for the output TSF path (workspace-relative)")
     args = parser.parse_args()
 
-    # Load configuration from file
-    config = load_config_file(args.config)
-
-    cohort_name = config['cohort_name']
-    series_name = config['series_name']
+    include_rcl = parse_bool(args.include_reference_confident_loci, True)
     source_version = datetime.utcnow().strftime("%Y-%m-%d-%H-%M")
 
-    # Get required environment variables
-    workspace_dir = get_env_or_error('WORKSPACE_DIR')
-    gh_workspace_assembly = get_env_or_error('GH_WORKSPACE_ASSEMBLY')
+    workspace_dir = get_env_or_error("WORKSPACE_DIR")
+    gh_workspace_assembly = get_env_or_error("GH_WORKSPACE_ASSEMBLY")
+    agent_cpu_cores = int(os.environ.get("AGENT_CPU_CORES"))
+    agent_memory_gb = int(os.environ.get("AGENT_MEMORY_GB"))
+    gautil_path = os.environ.get("GAUTIL_PATH", "/opt/apiserver/gautil")
 
-    # Optional environment variables
-    agent_cpu_cores = int(os.environ.get('AGENT_CPU_CORES'))
-    agent_memory_gb = int(os.environ.get('AGENT_MEMORY_GB'))
-    task_dir = os.environ.get('TASK_DIR')
-
-
-    manifest_parameter_file = args.manifest_parameter_file
-    print(f"Loading manifest parameter file: {manifest_parameter_file}")
-
-    # Find the existing counts
-    if args.existing_counts:
-        existing_counts = args.existing_counts
-    else:
-        # Look for the most recent counts file
-        existing_counts = config['out_file']
-        existing_counts = os.path.join(workspace_dir, existing_counts)
-        if existing_counts.endswith('.tsf'):
-            existing_counts = existing_counts[:-4]
-
-        existing_counts = f"{existing_counts}_*.tsf"
-        print(f"Looking for existing counts {existing_counts}")
-        existing_counts = glob.glob(existing_counts)
-        if existing_counts:
-            # sort the files by name which should be the same as the source version
-            existing_counts = sorted(existing_counts, key=os.path.basename)
-            existing_counts = existing_counts[-1]
-        else:
-            existing_counts = None
-    
-    existing_counts_samples = None
-    if existing_counts:
-      print(f"Using existing counts: {existing_counts}")
-      existing_counts_samples = f"{existing_counts}:2"
-    else:
-      print("No existing counts file found")
-      existing_counts = ""
-      existing_counts_samples = ""
-
-
-
-    new_counts_files = []
-
-    manifest_file_base = os.path.basename(manifest_parameter_file)
-    with open(manifest_parameter_file, 'r') as f:
-      header = f.readline()
-      print(f"Header: {header}")
-      for line in f:
-        line = line.strip()
-        if not line or line.startswith('#'):
-          continue
-
-        output_file = line.split(',')[0]
-        output_file = output_file.replace('.manifest.txt', '.tsf')
-
-        output_file_path = os.path.join(os.path.dirname(manifest_parameter_file), output_file)
-        new_counts_files.append(output_file_path)
-        print(f"New counts file: {output_file_path}")
-
-    if len(new_counts_files) == 0:
-      print("No new processed files found")
-      sys.exit(1)
-
-    out_file = args.out_file
-    if not out_file:
-        out_file = config['out_file']
-    if out_file.endswith('.tsf'):
-        out_file = out_file[:-4]
-    
-    if not args.out_file:
-      out_file = f"{out_file}_{source_version}"
-
-    if not out_file.endswith('.tsf'):
-      out_file = f"{out_file}.tsf"
-
-    out_file = os.path.join(workspace_dir, out_file)
-    
-
-    sample_name_threshold = int(config.get('sample_name_threshold', '20'))
-    include_reference_confident_loci = parse_bool(
-        config.get('include_reference_confident_loci'), True
-    )
-
-    gautil_path = os.environ.get('GAUTIL_PATH', '/opt/apiserver/gautil')
-
-    # Track parameters
-    source_name = f"{cohort_name} Variant Frequencies"
-
-    # Determine coordinate system
-    if gh_workspace_assembly.startswith('GRCh_37'):
+    if gh_workspace_assembly.startswith("GRCh_37"):
         coord_sys_id = "GRCh_37_g1k,Chromosome,Homo sapiens"
     else:
         coord_sys_id = "GRCh_38,Chromosome,Homo sapiens"
-
     print(f"Workspace Assembly: {gh_workspace_assembly} => {coord_sys_id}")
 
-    # Annotations folder
+    # Determine output path
+    if args.out_file:
+        out_file = args.out_file
+        if out_file.endswith(".tsf"):
+            out_file = out_file[:-4]
+    else:
+        out_file = os.path.join(COHORTS_DIR_REL, args.series_name)
+    out_file = f"{out_file}_{source_version}.tsf"
+    out_file = os.path.join(workspace_dir, out_file)
+
+    # Read manifest-list CSV (written by stage 1) to find per-manifest TSFs
+    manifest_parameter_file = args.manifest_parameter_file
+    print(f"Loading manifest parameter file: {manifest_parameter_file}")
+    new_counts_files = []
+    with open(manifest_parameter_file, "r") as f:
+        header = f.readline()
+        print(f"Header: {header.strip()}")
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            cell = line.split(",")[0]
+            tsf = cell.replace(".manifest.txt", ".tsf")
+            tsf_path = os.path.join(os.path.dirname(manifest_parameter_file), tsf)
+            new_counts_files.append(tsf_path)
+            print(f"New counts file: {tsf_path}")
+
+    if not new_counts_files:
+        print("No new processed files found", file=sys.stderr)
+        sys.exit(1)
+
+    existing_counts = args.existing_counts
+    existing_counts_samples = ""
+    if existing_counts:
+        print(f"Using existing counts: {existing_counts}")
+        existing_counts_samples = f"{existing_counts}:2"
+    else:
+        print("No existing counts file; building a new cohort.")
+
     annotations_folder = os.path.join(workspace_dir, "AppData/Common Data/Annotations")
     if not os.path.exists(annotations_folder):
-      print(f"Could not find annotations directory: {annotationFolder}")
-      sys.exit(1)
+        print(f"Could not find annotations directory: {annotations_folder}", file=sys.stderr)
+        sys.exit(1)
 
-    # Set up environment for gautil
-    os.environ['GOLDENHELIX_USERDATA'] = os.path.join(workspace_dir, 'AppData')
-    crash_dump_dir = os.path.join(workspace_dir, 'AppData/VarSeq/User Data')
+    os.environ["GOLDENHELIX_USERDATA"] = os.path.join(workspace_dir, "AppData")
+    crash_dump_dir = os.path.join(workspace_dir, "AppData/VarSeq/User Data")
     if os.path.exists(crash_dump_dir):
-        os.environ['GH_CRASH_DUMP_DIR'] = crash_dump_dir
+        os.environ["GH_CRASH_DUMP_DIR"] = crash_dump_dir
 
     print(f"CPU cores: {agent_cpu_cores}")
     print(f"Memory (GB): {agent_memory_gb}")
+
+    source_name = f"{args.cohort_name} Variant Frequencies"
 
     # When IRCL is true (default) we keep loci where no sample has a variant
     # allele, because on gVCF inputs those rows carry the reference-confident
     # evidence that makes cohort allele frequencies meaningful. When IRCL is
     # false we re-introduce the historical any(AlleleCounts > 0) filter.
     ac_filter_section = ""
-    if not include_reference_confident_loci:
+    if not include_rcl:
         ac_filter_section = (
             "        - filterByExpr:\n"
             "            expr: any(AlleleCounts > 0)\n\n"
@@ -191,7 +133,7 @@ def main():
             existingCountsSampleSource: "{existing_counts_samples}"
             countNoCalls: true
             sourceNamePrefix: "{source_name}"
-            outputSampleNamesThreshold: {sample_name_threshold}
+            outputSampleNamesThreshold: {args.sample_name_threshold}
 
 {ac_filter_section}        - runTaskLists:
             taskLists:
@@ -202,7 +144,7 @@ def main():
                         filePath: "{out_file}"
                         sourceMeta:
                           coordSysId: "{coord_sys_id}"
-                          seriesName: "{series_name}"
+                          seriesName: "{args.series_name}"
                           sourceVersion: "{source_version}"
 
               - SourceTaskListTask:
@@ -222,41 +164,37 @@ def main():
 """
 
     batch_file_path = "gautil_batch_cohort.yaml"
-    with open(batch_file_path, 'w') as f:
+    with open(batch_file_path, "w") as f:
         f.write(gautil_batch_content)
-
     print(f"Created batch cohort file: {batch_file_path}")
 
-    # Create a manifest file for the new counts files
-    manifest_file = f"manifest_cohort_merge.txt"
-    with open(manifest_file, 'w') as f:
-      for new_counts_file in new_counts_files:
-        f.write(f"{new_counts_file}\n")
+    manifest_file = "manifest_cohort_merge.txt"
+    with open(manifest_file, "w") as f:
+        for tsf in new_counts_files:
+            f.write(f"{tsf}\n")
 
-    # Run gautil
     print("Running gautil cohort merge...")
-    gautil_cmd = [
-        gautil_path, "run",
-        f"--annotationFolder={annotations_folder}",
-        "--manifest", manifest_file,
-        "-c", batch_file_path
-    ]
-
     run_process_with_filtered_output(
-        gautil_cmd,
-        filter_warnings=["GAFeatureReader loop level greater than 1"]
+        [
+            gautil_path, "run",
+            f"--annotationFolder={annotations_folder}",
+            "--manifest", manifest_file,
+            "-c", batch_file_path,
+        ],
+        filter_warnings=["GAFeatureReader loop level greater than 1"],
     )
 
-    # Remove the files in the manifest file (they are temporary and take up space!)
-    for new_counts_file in new_counts_files:
-        os.remove(new_counts_file)
+    # Remove the intermediate per-manifest TSFs (they are temporary and take up space)
+    for tsf in new_counts_files:
+        try:
+            os.remove(tsf)
+        except FileNotFoundError:
+            pass
 
-    # Precompute the output file
     print("Precomputing output file...")
     subprocess.run([gautil_path, "precompute", out_file], check=True)
-
     print(f"Successfully created: {out_file}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

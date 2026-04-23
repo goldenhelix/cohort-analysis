@@ -1,60 +1,67 @@
 # yaml-language-server: $schema=https://www.schemastore.org/any.json
 name: Cohort Annotation Track Updater
 description: |-
-  # Update Cohort Variant Frequencies
+  # Cohort Merge
 
-  Updates a cohort variant frequencies track by adding new samples.
-
-  ## Process Overview
-  This task merges variant data from new VCF files into an existing cohort variant
-  frequencies track. It:
-  1. Reads variants from the input VCF files
-  2. Filters variants based on INFO and FORMAT fields filters
-  3. Merges the filtered variants with any existing variant counts
-  4. Updates the cohort parameter file with the new settings
+  Combines per-manifest intermediate TSFs into the final cohort allele-frequency
+  TSF via gautil's additiveCountAlleles transform. When
+  include_reference_confident_loci is false the historical any(AlleleCounts > 0)
+  filter is reapplied.
 
   ## Important Note
-  This task should not be run directly. Instead:
-  1. Use the "Build Cohort Annotation Track" workflow
-  2. Select your existing cohort parameter file
-  3. Select the folder containing your new VCF files
-
-  The workflow will automatically run this task with the correct parameters.
+  Invoked by the "Build Cohort Annotation Track" workflow, not run directly.
 
 agent_requirements:
-  cpu_cores: 16 
+  cpu_cores: 16
   memory_gb: 16
 
 parameters:
   - name: manifest_parameter_file
     type: file
-    label: Manifest File
-    help: Text file containing paths to manifests and their processed outputs
+    label: Manifest List
+    help: manifest_list.csv from the manifest stage
     pattern_match: ["*.csv"]
 
-  - name: parameter_file
-    type: file
-    label: Parameter File
-    help: Parameter file for the cohort
+  - name: cohort_name
+    type: string
+    label: Cohort Name
+    help: Resolved by the manifest stage.
+
+  - name: series_name
+    type: string
+    label: Series Name
+    help: Resolved by the manifest stage.
 
   - name: existing_counts
-    type: file
-    label: Existing Counts File
-    help: Optional TSF file containing existing variant counts to update
-    pattern_match: ["*.tsf"]
+    type: string
+    label: Existing Counts Path
+    help: Resolved by the manifest stage. Empty for new cohorts.
+    value: ""
+    optional: true
+
+  - name: sample_name_threshold
+    label: Sample Name Threshold
+    type: integer
+    value: 20
+    optional: true
+
+  - name: include_reference_confident_loci
+    label: Include Reference-Confident Loci
+    type: boolean
+    value: true
     optional: true
 
   - name: out_file
     type: file
-    label: Output File Base Name
-    help: The output file to create
+    label: Output File Override
+    help: Workspace-relative override for the output TSF path.
     group: "Advanced Options"
     create: true
     optional: true
 
 steps:
-  - name: create_cohort
-    description: Create the initial cohort
+  - name: final_merge
+    description: Combine per-manifest TSFs into the cohort track.
     type: cmd
     command: bash
     args:
@@ -63,6 +70,9 @@ steps:
         set -ex
         python3 -u "${TASK_DIR}/../scripts/cohort_merge.py" \
           --manifest-parameter-file "${manifest_parameter_file}" \
-          --config "${parameter_file}" \
+          --cohort-name "${cohort_name}" \
+          --series-name "${series_name}" \
           --existing-counts "${existing_counts}" \
+          --sample-name-threshold "${sample_name_threshold}" \
+          --include-reference-confident-loci "${include_reference_confident_loci}" \
           --out-file "${out_file}"

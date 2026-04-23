@@ -1,46 +1,64 @@
-# We could point this to our public schema?
 # yaml-language-server: $schema=https://www.schemastore.org/any.json
 name: Cohort Annotation Track Updater
 description: |-
-  # Update Cohort Variant Frequencies
+  # Per-Batch VCF Merge
 
-  Updates a cohort variant frequencies track by adding new samples.
-
-  ## Process Overview
-  This task merges variant data from new VCF files into an existing cohort variant
-  frequencies track. It:
-  1. Reads variants from the input VCF files
-  2. Filters variants based on INFO and FORMAT fields filters
-  3. Merges the filtered variants with any existing variant counts
-  4. Updates the cohort parameter file with the new settings
+  Merges the VCFs listed in one manifest into an intermediate TSF. Filter
+  expressions are composed from the typed thresholds (min_qual / min_dp /
+  min_gq) per cohort type (gVCF vs joint).
 
   ## Important Note
-  This task should not be run directly. Instead:
-  1. Use the "Build Cohort Annotation Track" workflow
-  2. Select your existing cohort parameter file
-  3. Select the folder containing your new VCF files
-
-  The workflow will automatically run this task with the correct parameters.
+  This task is invoked by the "Build Cohort Annotation Track" workflow per
+  manifest batch, not run directly.
 
 agent_requirements:
-  cpu_cores: 32 
-  memory_gb: 64 
+  cpu_cores: 32
+  memory_gb: 64
 
 parameters:
   - name: manifest_file
     type: file
     label: Manifest File
-    help: Text file containing paths to VCF files to process
+    help: One .manifest.txt listing VCFs for this batch
     pattern_match: ["*.txt"]
 
-  - name: parameter_file
-    type: file
-    label: Parameter File
-    help: The cohort parameter file for the cohort being updated
+  - name: cohort_type
+    type: string
+    label: Cohort Type (gvcf|joint)
+    help: Resolved by the manifest stage from VCF headers.
+
+  - name: series_name
+    type: string
+    label: Series Name
+    help: Resolved by the manifest stage.
+
+  - name: min_qual
+    label: Minimum QUAL
+    type: integer
+    value: 10
+    optional: true
+
+  - name: min_dp
+    label: Minimum DP
+    type: integer
+    value: 3
+    optional: true
+
+  - name: min_gq
+    label: Minimum GQ
+    type: integer
+    value: 10
+    optional: true
+
+  - name: include_reference_confident_loci
+    label: Include Reference-Confident Loci
+    type: boolean
+    value: true
+    optional: true
 
 steps:
-  - name: create_cohort
-    description: Create the initial cohort
+  - name: per_batch_merge
+    description: Merge VCFs listed in one manifest into an intermediate TSF.
     type: cmd
     command: bash
     args:
@@ -48,5 +66,10 @@ steps:
         #!/usr/bin/env bash
         set -ex
         python3 -u "${TASK_DIR}/../scripts/vcf_merge.py" \
-          --config "${parameter_file}" \
-          --manifest-file "${manifest_file}" 
+          --manifest-file "${manifest_file}" \
+          --cohort-type "${cohort_type}" \
+          --series-name "${series_name}" \
+          --min-qual "${min_qual}" \
+          --min-dp "${min_dp}" \
+          --min-gq "${min_gq}" \
+          --include-reference-confident-loci "${include_reference_confident_loci}"

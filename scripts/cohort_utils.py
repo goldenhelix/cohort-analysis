@@ -1,55 +1,21 @@
 #!/usr/bin/env python3
 """
-Utility functions for running subprocess commands with real-time output streaming.
+Shared utilities for the Cohort Allele Frequency workflow scripts.
 """
 
 import math
 import os
+import re
+import select
 import subprocess
 import sys
-import select
-
-def load_config_file(config_path):
-    """Load configuration from a key=value parameter file."""
-    config = {}
-    with open(config_path, 'r') as f:
-        for line_num, line in enumerate(f, 1):
-            line = line.strip()
-            # Skip empty lines and comments
-            if not line or line.startswith('#'):
-                continue
-
-            # Parse key=value
-            if '=' not in line:
-                print(f"Warning: Skipping invalid line {line_num}: {line}", file=sys.stderr)
-                continue
-
-            key, value = line.split('=', 1)
-            key = key.strip()
-            value = value.strip()
-
-            # Remove quotes if present
-            if (value.startswith('"') and value.endswith('"')) or \
-               (value.startswith("'") and value.endswith("'")):
-                value = value[1:-1]
-
-            config[key] = value
-
-    # Required parameters
-    required_params = ['cohort_name', 'series_name']
-    for param in required_params:
-        if param not in config:
-            print(f"Error: Required parameter '{param}' not found in config file", file=sys.stderr)
-            sys.exit(1)
-
-    return config
 
 
 def calculate_thread_counts(cpu_count, file_count):
     # the readers per flattener is also the number of stripes
 
     # Need to have a better way to control this so we can specify the stripes seperate from the merge threads
-    #thread_count = cpu_count * 4 
+    #thread_count = cpu_count * 4
     #flatten_threads = cpu_count * 4
     #readers_per_flattener = math.ceil(file_count / (flatten_threads -1))
     readers_per_flattener = 1
@@ -80,26 +46,75 @@ def get_env_or_error(var_name):
     return value
 
 
-def quote_if_needed(value):
-    """Add quotes if value doesn't already contain them."""
-    if '"' in value:
-        return value
-    return f'"{value}"'
-
-
-def parse_int(value, default):
-    """Parse a parameter-file string into an int, returning default on empty/None."""
+def parse_bool(value, default=False):
+    """Parse a CLI string into a bool. Argparse passes values through as strings
+    when they come from workflow-shell interpolation, so we normalize here."""
     if value is None or value == "":
         return default
-    return int(value)
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
 
 
-def parse_bool(value, default):
-    """Parse a parameter-file string into a bool, returning default on empty/None."""
-    if value is None or value == "":
-        return default
-    return value.strip().lower() in ("1", "true", "yes", "on")
+_SLUG_SPACE_RE = re.compile(r"\s+")
+_SLUG_STRIP_RE = re.compile(r"[^a-z0-9_\-]")
+_SLUG_COLLAPSE_RE = re.compile(r"_+")
 
+
+def slugify(name):
+    """Produce a filesystem- and metadata-safe identifier from a human name.
+    Used to derive series_name from cohort_name when the user leaves
+    series_name blank on the workflow form."""
+    s = str(name).strip().lower()
+    s = _SLUG_SPACE_RE.sub("_", s)
+    s = _SLUG_STRIP_RE.sub("", s)
+    s = _SLUG_COLLAPSE_RE.sub("_", s)
+    return s.strip("_-")
+
+
+_SERIES_RE = re.compile(r'"seriesName"\s*:\s*"([^"]+)"')
+_VF_SOURCE_RE = re.compile(
+    r'"name"\s*:\s*"([^"]+? Variant Frequencies(?:\s*\(\d+\s*Samples?\))?)"'
+)
+_COHORT_NAME_RE = re.compile(
+    r"^(.+?) Variant Frequencies(?:\s*\(\d+\s*Samples?\))?$"
+)
+
+
+def scrape_cohort_identity(tsf_path, gautil_path):
+    """Recover (cohort_name, series_name) from a cohort allele-frequency TSF.
+
+    series_name is stored directly in the TSF's sourceMeta. cohort_name is
+    reconstructed from the cohort source field's name, which has the form
+    "{cohort_name} Variant Frequencies (N Samples)" (the " (N Samples)" suffix
+    is added by gautil's additiveCountAlleles step at merge time).
+
+    The schema JSON can contain an embedded HTML blob with unescaped characters
+    that break strict JSON parsing, so we grep the raw text instead of parsing.
+    """
+    raw = subprocess.run(
+        [gautil_path, "schema", tsf_path],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    s_match = _SERIES_RE.search(raw)
+    if not s_match:
+        sys.exit(
+            f"Error: TSF {tsf_path!r} does not declare a seriesName. "
+            "Does not appear to be a cohort allele-frequency track."
+        )
+    series_name = s_match.group(1)
+
+    n_match = _VF_SOURCE_RE.search(raw)
+    if not n_match:
+        sys.exit(
+            f"Error: TSF {tsf_path!r} has no 'X Variant Frequencies' source. "
+            "Does not appear to be a cohort allele-frequency track."
+        )
+    c_match = _COHORT_NAME_RE.match(n_match.group(1))
+    if not c_match:
+        sys.exit(
+            f"Error: unexpected source-name format in {tsf_path!r}: "
+            f"{n_match.group(1)!r}. Cannot recover cohort_name."
+        )
+    return c_match.group(1), series_name
 
 
 def run_process_with_filtered_output(command, filter_warnings=None):

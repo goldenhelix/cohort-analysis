@@ -1,20 +1,13 @@
-# We could point this to our public schema?
 # yaml-language-server: $schema=https://www.schemastore.org/any.json
 name: Cohort Manifest Generator
 description: |-
-  Creates a manifest file listing all VCF.gz files from an input directory.
-
-  This task generates a manifest file that lists all VCF.gz files in a specified
-  directory. The manifest file is used to specify the input files for downstream
-  tasks that require a list of VCF files.
+  Resolves the effective cohort identity (cohort_name, series_name,
+  existing_counts), validates input VCF headers against the active thresholds,
+  classifies the cohort as gVCF or joint, and writes per-batch manifest files.
 
   ## Important Note
-  This task should not be run directly. Instead:
-  1. Use the "Build Cohort Annotation Track" workflow
-  2. Select your existing cohort parameter file
-  3. Select the folder containing your new VCF files
-  
-  The workflow will automatically run this task as part of the cohort workflow.
+  This task is not intended to be run directly. Use the "Build Cohort
+  Annotation Track" workflow instead.
 
 agent_requirements:
   cpu_cores: 0
@@ -23,25 +16,84 @@ agent_requirements:
 parameters:
   - name: input_directory
     type: directory
-    label: Input Directory
-    help: Directory containing VCF.gz files to process
+    label: VCF Input Directory
+    help: Directory containing *.vcf.gz files to add to the cohort.
     supports_location_mode: 'read_only'
 
-  - name: parameter_file
-    type: file
-    label: Parameter File
-    help: The cohort parameter file for the cohort being updated
+  - name: cohort_name
+    type: string
+    label: Cohort Name
+    help: >-
+      Display name for the cohort (becomes the variant-frequency source name
+      shown in VarSeq). Required when starting a new cohort. Ignored when an
+      existing cohort TSF is selected — the value from its metadata is used
+      and the override is logged.
+    value: ""
+    optional: true
+
+  - name: series_name
+    type: string
+    label: Series Name
+    help: >-
+      Series identifier used as the cohort TSF filename stem and as the
+      seriesName in TSF metadata. If blank when starting a new cohort, it is
+      auto-derived by slugifying the cohort name (lowercase, spaces to
+      underscores). Ignored when an existing cohort TSF is selected.
+    value: ""
+    optional: true
 
   - name: existing_counts
     type: file
-    label: Existing Counts File
-    help: Optional TSF file containing existing variant counts to update
+    label: Existing Cohort TSF (to update)
+    help: >-
+      Optional. Pick a prior cohort TSF to add samples to it; its
+      cohort_name and series_name will override anything typed above.
+      Leave blank to create a new cohort or to auto-discover the latest
+      TSF matching the typed series_name.
     pattern_match: ["*.tsf"]
+    optional: true
+
+  - name: min_qual
+    type: integer
+    label: Minimum QUAL
+    help: Site-level QUAL floor. 0 disables.
+    value: 10
+    optional: true
+
+  - name: min_dp
+    type: integer
+    label: Minimum DP
+    help: Per-sample DP floor. 0 disables. DP must be declared in every input VCF header when > 0.
+    value: 3
+    optional: true
+
+  - name: min_gq
+    type: integer
+    label: Minimum GQ
+    help: Per-sample GQ floor. 0 disables. GQ must be declared in every input VCF header when > 0.
+    value: 10
+    optional: true
+
+  - name: include_reference_confident_loci
+    type: boolean
+    label: Include Reference-Confident Loci (gVCF)
+    help: >-
+      When true (default), gVCF reference-confident blocks are preserved;
+      when false, the historical any(AlleleCounts > 0) filter is reapplied
+      post-merge and zero-count loci are dropped.
+    value: true
+    optional: true
+
+  - name: merge_step_file_count
+    type: integer
+    label: Files Per Merge Batch
+    help: Number of VCFs processed per vcf_merge invocation.
+    value: 128
     optional: true
 
 steps:
   - name: create_manifest
-    description: Create manifest file listing all VCF.gz files
+    description: Resolve identity, validate headers, write manifests.
     type: cmd
     command: bash
     args:
@@ -49,72 +101,35 @@ steps:
         #!/usr/bin/env bash
         set -e
 
-        gautil_path="/opt/apiserver/gautil"
-
-        echo "Using parameter file: ${parameter_file}"
-
-        # Ensure output directory exists
         output_directory="$(pwd)"
         mkdir -p "${output_directory}"
 
-        if [ -z "${existing_counts}" ]; then
-          out_file=$(grep "out_file=" "${parameter_file}" | cut -d '=' -f 2)
-          out_file="${WORKSPACE_DIR}/${out_file}"
-          out_file="${out_file%.tsf}"
-          existing_counts=$(ls -t "${out_file}"_*.tsf 2>/dev/null | head -n 1)
-        fi
+        resolved_env="${output_directory}/resolved.env"
 
-        merge_step_file_count=$(grep "merge_step_file_count=" "${parameter_file}" | cut -d '=' -f 2)
-        if [ -z "${merge_step_file_count}" ]; then
-          merge_step_file_count="128"
-        fi
-        echo "${merge_step_file_count}"
+        python3 -u "${TASK_DIR}/../scripts/create_manifest_files.py" \
+          --input-directory "${input_directory}" \
+          --cohort-name "${cohort_name}" \
+          --series-name "${series_name}" \
+          --existing-counts "${existing_counts}" \
+          --min-qual "${min_qual}" \
+          --min-dp "${min_dp}" \
+          --min-gq "${min_gq}" \
+          --include-reference-confident-loci "${include_reference_confident_loci}" \
+          --files-per-manifest "${merge_step_file_count}" \
+          --emit-env "${resolved_env}"
 
-        existing_sample_names="samples.txt"
-        if [ ! -z "${existing_counts}" ]; then
-          echo "Using existing counts file: ${existing_counts}"
+        # Seems to help I/O stability across agents
+        echo "Working directory: $(pwd), contains $(ls -la .)"
 
-          cat <<EOF > sample_names.txsource
-          {
-            "inputs": [
-              "${existing_counts}:2"
-            ],
-            "name": "entitiesAsFeatures",
-            "options": {
-              "className": "EntitiesAsFeaturesTransformOptions"
-            }
-          }
+        output_directory_rel="${output_directory#${WORKSPACE_DIR}/}"
+        output_manifest_list_rel="${output_directory}/manifest_list.csv"
+        output_manifest_list_rel="${output_manifest_list_rel#${WORKSPACE_DIR}/}"
 
-        EOF
-          "${gautil_path}" read sample_names.txsource | cut -f 5 > "${existing_sample_names}"
-          echo "Extracted $(wc -l < "${existing_sample_names}") sample names from existing counts file."
-        else
-          echo "No existing counts file provided or found."
-          touch "${existing_sample_names}"
-        fi
+        {
+          echo "output_directory=${output_directory_rel}"
+          echo "output_manifest_list=${output_manifest_list_rel}"
+          cat "${resolved_env}"
+        } > result.env
 
-        python3 "${TASK_DIR}/../scripts/create_manifest_files.py" \
-          -n ${merge_step_file_count} \
-          --config "${parameter_file}" \
-          "${existing_sample_names}" "${input_directory}"
-        # Seem to need this to prevent I/O errors on windows ???, otherwise we
-        # can't write the result.env file
-        echo "Working directory: $(pwd)/.., contains $(ls -la ../.)"
-
-
-        parameter_file="${output_directory}/parameter_file.csv"
-        parameter_file="$(readlink -f "${parameter_file}")"
-        parameter_file="${parameter_file#${WORKSPACE_DIR}/}"
-
-        output_directory="$(pwd)"
-        output_directory="${output_directory#${WORKSPACE_DIR}/}"
-
-        output_manifest_list="$(pwd)/manifest_list.csv"
-        output_manifest_list="${output_manifest_list#${WORKSPACE_DIR}/}"
-
-        touch result.env
-        echo "output_manifest_list=${output_manifest_list}" > result.env
-        echo "output_directory=${output_directory}" >> result.env
         echo "Output Parameters:"
         cat result.env
-
