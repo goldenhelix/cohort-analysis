@@ -3,6 +3,7 @@
 Utility functions for running subprocess commands with real-time output streaming.
 """
 
+import json
 import math
 import os
 import subprocess
@@ -69,6 +70,53 @@ def calculate_thread_counts(cpu_count, file_count):
     print(f"total_threads: {total}")
 
     return reader_threads, readers_per_flattener
+
+
+def get_source_coord_sys_id(source_path, gautil_path):
+    """Read the coordSysId of a source file via ``gautil schema``.
+
+    Returns the coordSysId string, or None if it could not be determined (the
+    caller should treat None as "unknown" rather than as a mismatch).
+    """
+    try:
+        result = subprocess.run(
+            [gautil_path, "schema", source_path],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (subprocess.CalledProcessError, OSError) as e:
+        print(f"Warning: could not read schema for {source_path}: {e}", file=sys.stderr)
+        return None
+
+    try:
+        schema = json.loads(result.stdout)
+    except json.JSONDecodeError as e:
+        print(f"Warning: could not parse schema for {source_path}: {e}", file=sys.stderr)
+        return None
+
+    coord_sys_id = schema.get('coordInfo', {}).get('coordSysId')
+    return coord_sys_id or None
+
+
+def normalize_coord_sys_id(coord_sys_id):
+    """Normalize a coordSysId for comparison.
+
+    Trims whitespace around the comma-separated parts and treats the deprecated
+    ``GRCh_37`` build as equivalent to ``GRCh_37_g1k`` (matching the server-side
+    workspace assembly normalization).
+    """
+    if not coord_sys_id:
+        return ""
+    parts = [p.strip() for p in coord_sys_id.split(',')]
+    if parts and parts[0] == "GRCh_37":
+        parts[0] = "GRCh_37_g1k"
+    return ",".join(parts)
+
+
+def coord_sys_ids_match(a, b):
+    """Return True if two coordSysId strings refer to the same assembly."""
+    return normalize_coord_sys_id(a) == normalize_coord_sys_id(b)
 
 
 def get_env_or_error(var_name):

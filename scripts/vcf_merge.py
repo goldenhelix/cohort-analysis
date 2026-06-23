@@ -79,7 +79,6 @@ def main():
 
     # Get required environment variables
     workspace_dir = get_env_or_error('WORKSPACE_DIR')
-    gh_workspace_assembly = get_env_or_error('GH_WORKSPACE_ASSEMBLY')
 
     # Optional environment variables
     agent_cpu_cores = int(os.environ.get('AGENT_CPU_CORES'))
@@ -90,13 +89,17 @@ def main():
     source_name = f"{cohort_name} Variant Frequencies"
     source_version = datetime.utcnow().strftime("%Y-%m-%d")
 
-    # Determine coordinate system
-    if gh_workspace_assembly.startswith('GRCh_37'):
-        coord_sys_id = "GRCh_37_g1k,Chromosome,Homo sapiens"
+    # Determine coordinate system. GH_WORKSPACE_ASSEMBLY is already a full
+    # coordSysId (e.g. "GRCh_38,Chromosome,Homo sapiens") set from the workspace,
+    # so use it directly. A coord_sys_id entry in the parameter file overrides it;
+    # either way the value is applied through the TsfWriterTask sourceMeta
+    # transform below.
+    coord_sys_id = config.get('coord_sys_id')
+    if coord_sys_id:
+        print(f"Using coordSysId override from parameter file: {coord_sys_id}")
     else:
-        coord_sys_id = "GRCh_38,Chromosome,Homo sapiens"
-
-    print(f"Workspace Assembly: {gh_workspace_assembly} => {coord_sys_id}")
+        coord_sys_id = get_env_or_error('GH_WORKSPACE_ASSEMBLY')
+        print(f"Using workspace coordSysId: {coord_sys_id}")
 
     # Check for TBI index files
     check_tbi_files(manifest_file)
@@ -165,7 +168,12 @@ def main():
             - END
             - Samples
       - fullyFlattenedMultiAllelicSplit
-      - leftAlign
+      - leftAlign:
+          # Force the reference for every input so all VCFs align to the same
+          # assembly, even if a particular input's coordSysId fails to be
+          # auto-detected. Without this, leftAlign falls back to each input
+          # source's own coordSysId, which can differ or be empty.
+          refCoordSysId: "{coord_sys_id}"
       - trimCommonBases
       - variantCollapsing
 
