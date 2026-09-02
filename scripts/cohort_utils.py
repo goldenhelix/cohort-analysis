@@ -54,6 +54,26 @@ def parse_bool(value, default=False):
     return str(value).strip().lower() in ("1", "true", "yes", "on")
 
 
+# Recognized VCF input extensions for cohort scanning. Callers such as DRAGEN
+# emit genomic VCFs as ".gvcf.gz"; joint/plain VCFs use ".vcf.gz"; either kind
+# may also be left uncompressed. All four are valid inputs.
+VCF_SUFFIXES = (".vcf.gz", ".gvcf.gz", ".vcf", ".gvcf")
+
+# The subset that is bgzip-compressed and therefore expected to carry a tabix
+# ".tbi" index alongside it. Uncompressed inputs have no index to check for.
+BGZF_VCF_SUFFIXES = (".vcf.gz", ".gvcf.gz")
+
+
+def is_vcf_input(name):
+    """True if `name` is a (g)VCF input we should ingest (compressed or not)."""
+    return str(name).endswith(VCF_SUFFIXES)
+
+
+def is_bgzf_vcf(name):
+    """True if `name` is a bgzip-compressed (g)VCF (expected to have a .tbi)."""
+    return str(name).endswith(BGZF_VCF_SUFFIXES)
+
+
 _SLUG_SPACE_RE = re.compile(r"\s+")
 _SLUG_STRIP_RE = re.compile(r"[^a-z0-9_\-]")
 _SLUG_COLLAPSE_RE = re.compile(r"_+")

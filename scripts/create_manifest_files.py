@@ -11,7 +11,8 @@ this script:
      source of truth and overrides typed values (loudly, with a log line).
   2. Reads the sample list already in the cohort (if existing_counts resolved),
      so we can skip input VCFs that would re-add an existing sample.
-  3. Scans the input directory for `*.vcf.gz` files with new samples.
+  3. Scans the input directory (recursively) for VCF inputs with new
+     samples: `.vcf.gz`, `.gvcf.gz`, `.vcf`, and `.gvcf` (compressed or not).
   4. Validates each candidate VCF's header against the active thresholds:
      DP must be declared when min_dp > 0; GQ when min_gq > 0. Errors are
      aggregated across all files and reported once.
@@ -34,7 +35,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-from cohort_utils import parse_bool, scrape_cohort_identity, slugify
+from cohort_utils import is_vcf_input, parse_bool, scrape_cohort_identity, slugify
 
 
 COHORTS_DIR_REL = "AppData/Common Data/UserAnnotations/cohorts"
@@ -165,9 +166,10 @@ def find_files_with_new_samples(directory: str, existing_samples: Set[str]) -> L
         raise ValueError(f"{directory} is not a valid directory")
 
     found: List[str] = []
-    for file_path in sorted(dir_path.rglob("*.vcf.gz")):
-        if not file_path.is_file():
-            continue
+    candidates = sorted(
+        p for p in dir_path.rglob("*") if p.is_file() and is_vcf_input(p.name)
+    )
+    for file_path in candidates:
         try:
             sample_names = get_sample_names_from_file(str(file_path))
             print(f"Processing {file_path}: found {sample_names}")

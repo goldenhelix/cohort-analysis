@@ -21,19 +21,22 @@ from datetime import datetime
 from cohort_utils import (
     calculate_thread_counts,
     get_env_or_error,
+    is_bgzf_vcf,
     parse_bool,
     run_process_with_filtered_output,
 )
 
 
 def check_tbi_files(manifest_file):
-    """Verify that TBI index files exist for all VCF files in the manifest."""
+    """Verify that TBI index files exist for the bgzip-compressed VCFs in the
+    manifest (`.vcf.gz` / `.gvcf.gz`). Uncompressed `.vcf` / `.gvcf` inputs
+    have no tabix index to check for."""
     print("Checking for TBI index files...")
     missing = []
     with open(manifest_file, "r") as f:
         for line in f:
             vcf = line.strip()
-            if vcf and vcf.endswith(".vcf.gz") and not os.path.exists(f"{vcf}.tbi"):
+            if vcf and is_bgzf_vcf(vcf) and not os.path.exists(f"{vcf}.tbi"):
                 missing.append(f"{vcf}.tbi")
     if missing:
         print("Error: missing TBI index files:", file=sys.stderr)

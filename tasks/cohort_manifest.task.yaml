@@ -17,7 +17,7 @@ parameters:
   - name: input_directory
     type: directory
     label: VCF Input Directory
-    help: Directory containing *.vcf.gz files to add to the cohort.
+    help: Directory containing VCF files (.vcf.gz, .gvcf.gz, .vcf, .gvcf) to add to the cohort. Scanned recursively.
     supports_location_mode: 'read_only'
 
   - name: cohort_name

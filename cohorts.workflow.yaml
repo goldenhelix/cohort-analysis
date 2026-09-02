@@ -9,7 +9,7 @@ stages:
     task_parameters:
       - name: input_directory
         label: VCF Input Directory
-        help: Directory containing *.vcf.gz files to add to the cohort.
+        help: Directory containing VCF files (.vcf.gz, .gvcf.gz, .vcf, .gvcf) to add to the cohort. Scanned recursively.
         type: directory
         supports_location_mode: 'read_only'
         persist_key: 'cohorts.input_directory'

@@ -8,7 +8,7 @@ Run the **Build Cohort Annotation Track** workflow and fill in the form. There i
 
 ### Primary fields
 
-- **VCF Input Directory** *(required)* — folder of `*.vcf.gz` files to add to the cohort. Scanned recursively; files whose samples are already present in the selected cohort are skipped.
+- **VCF Input Directory** *(required)* — folder of VCF files to add to the cohort (`.vcf.gz`, `.gvcf.gz`, `.vcf`, `.gvcf`). Scanned recursively; files whose samples are already present in the selected cohort are skipped.
 - **Cohort Name** — display name for the cohort. Required for new cohorts. **Ignored** when an existing cohort TSF is selected — the metadata from the selected TSF is used and the override is announced in the run log.
 - **Series Name** — identifier used as the cohort TSF's filename stem and `seriesName` metadata. If you leave it blank when starting a new cohort, it's auto-derived by slugifying the cohort name (lowercase, spaces→underscores). Same override rule as above when an existing TSF is picked.
 - **Existing Cohort TSF** *(optional)* — pick a prior cohort TSF to extend. When set, it's the source of truth for cohort identity. When blank, the workflow will also try to auto-discover the latest TSF matching the typed series name; if found, its identity is used (and logged). If neither is present or found, a new cohort is created.
